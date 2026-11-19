@@ -56,7 +56,7 @@ Se usa **solo como PostgreSQL** mediante SQLAlchemy, sin SDK propietario, para p
 
 ## Despliegue en Vercel
 
-1. Importa este repo como proyecto nuevo en Vercel (Framework: *Other*). `vercel.json` y `api/index.py` ya enrutan todo a FastAPI.
+1. Importa este repo como proyecto nuevo en Vercel. Vercel detecta FastAPI automáticamente desde `app/main.py` (variable `app`); no hace falta `vercel.json`.
 2. Variables de entorno: `ENV=prod`, `DATABASE_URL`, `JWT_SECRET` (largo y aleatorio), `CORS_ORIGINS` (URL del front).
 3. En producción `/docs` y `/openapi.json` quedan desactivados.
 
