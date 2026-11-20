@@ -7,7 +7,8 @@ from typing import Literal
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$")
-SLUGS_RESERVADOS = {"www", "api", "admin", "app", "platform", "plataforma", "superadmin", "mail", "static"}
+SLUGS_RESERVADOS = {"www", "api", "admin", "app", "platform", "plataforma", "superadmin", "mail", "static",
+                   "login", "obras", "personal", "usuarios", "marca", "licencia", "cambiar-password", "suplantar", "favicon", "_next"}
 COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 MAX_IMAGEN = 400_000  # caracteres del data URI (~300 KB)
 TIPOS_IMAGEN = ("data:image/png;base64,", "data:image/jpeg;base64,", "data:image/webp;base64,", "data:image/svg+xml;base64,")
