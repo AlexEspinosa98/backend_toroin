@@ -8,7 +8,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 
 SLUG_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$")
 SLUGS_RESERVADOS = {"www", "api", "admin", "app", "platform", "plataforma", "superadmin", "mail", "static",
-                   "login", "obras", "personal", "usuarios", "marca", "licencia", "cambiar-password", "suplantar", "favicon", "_next"}
+                   "login", "obras", "personal", "usuarios", "marca", "licencia", "cambiar-password", "suplantar", "epp", "pagos", "finanzas", "control-personal", "ajustes", "asistencia", "contrato", "bitacora", "config", "festivos", "favicon", "_next"}
 COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 MAX_IMAGEN = 400_000  # caracteres del data URI (~300 KB)
 TIPOS_IMAGEN = ("data:image/png;base64,", "data:image/jpeg;base64,", "data:image/webp;base64,", "data:image/svg+xml;base64,")
@@ -299,3 +299,54 @@ class AsignarTareasIn(BaseModel):
 class FotoIn(BaseModel):
     obra_id: str
     datos: str
+
+
+ELEMENTOS_EPP = ("Casco", "Botas de seguridad", "Guantes", "Gafas", "Protector auditivo", "Tapabocas / respirador", "Arnés", "Eslinga",
+                 "Chaleco reflectivo", "Overol / dotación")
+MOTIVOS_EPP = ("Ingreso a obra", "Reposición", "Desgaste", "Pérdida", "Daño")
+CATEGORIAS_GASTO = ("Cortes de obra", "Compra de insumos", "Herramientas y equipos", "Transporte", "Otros")
+
+
+class ConfigIn(BaseModel):
+    semana: Literal["LS", "LV"] = "LS"
+    regla_dominical: Literal["legal", "literal"] = "legal"
+    modalidad_pago: Literal["jornal", "destajo"] = "jornal"
+    jornal_base: float = Field(default=58364, gt=0)
+    factor_prestacional: float = Field(default=1.0, ge=1, le=3)
+    festivos_extra: list[date] = []
+
+
+class SolicitudEPPIn(BaseModel):
+    trabajador_id: str
+    obra_id: str
+    elemento: str = Field(min_length=1, max_length=80)
+    talla: str = Field(default="", max_length=20)
+    cantidad: int = Field(default=1, ge=1, le=100)
+    motivo: str = "Ingreso a obra"
+    observaciones: str = Field(default="", max_length=300)
+
+
+class EstadoEPPIn(BaseModel):
+    estado: Literal["Aprobado", "Entregado", "Rechazado"]
+
+
+class FacturaIn(BaseModel):
+    numero: str = Field(default="", max_length=40)
+    fecha: date
+    concepto: str = Field(default="", max_length=200)
+    valor: float = Field(gt=0)
+
+
+class GastoIn(BaseModel):
+    fecha: date
+    categoria: str = "Otros"
+    descripcion: str = Field(default="", max_length=200)
+    valor: float = Field(gt=0)
+
+
+class IngresosIn(BaseModel):
+    ingresos_proyectados: float | None = Field(default=None, ge=0)
+
+
+class TarifaIn(BaseModel):
+    tarifa: float | None = Field(default=None, ge=0)

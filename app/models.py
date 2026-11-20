@@ -304,3 +304,63 @@ class Foto(Base):
     obra_id: Mapped[str] = mapped_column(ForeignKey("obras.id"), index=True)
     datos: Mapped[str] = mapped_column(Text)
     creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class ConfigEmpresa(Base):
+    """Reglas de nómina y calendario de cada empresa (una fila por empresa)."""
+    __tablename__ = "config_empresa"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), unique=True)
+    semana: Mapped[str] = mapped_column(String(2), default="LS")  # LS lunes-sábado | LV lunes-viernes
+    regla_dominical: Mapped[str] = mapped_column(String(10), default="legal")  # legal | literal
+    modalidad_pago: Mapped[str] = mapped_column(String(10), default="jornal")  # jornal | destajo
+    jornal_base: Mapped[float] = mapped_column(Float, default=58364)
+    factor_prestacional: Mapped[float] = mapped_column(Float, default=1.0)
+    festivos_extra: Mapped[list] = mapped_column(JSON, default=list)  # fechas ISO no laborables adicionales
+
+
+class SolicitudEPP(Base):
+    __tablename__ = "solicitudes_epp"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    trabajador_id: Mapped[str] = mapped_column(ForeignKey("trabajadores.id"), index=True)
+    obra_id: Mapped[str] = mapped_column(ForeignKey("obras.id"), index=True)
+    elemento: Mapped[str] = mapped_column(String(80))
+    talla: Mapped[str] = mapped_column(String(20), default="")
+    cantidad: Mapped[int] = mapped_column(Integer, default=1)
+    motivo: Mapped[str] = mapped_column(String(40), default="Ingreso a obra")
+    estado: Mapped[str] = mapped_column(String(20), default="Solicitado")  # Solicitado | Aprobado | Entregado | Rechazado
+    observaciones: Mapped[str] = mapped_column(String(300), default="")
+    solicitado_por: Mapped[str] = mapped_column(String(200), default="")
+    fecha_solicitud: Mapped[date] = mapped_column(Date)
+    fecha_aprobacion: Mapped[date | None] = mapped_column(Date, nullable=True)
+    fecha_entrega: Mapped[date | None] = mapped_column(Date, nullable=True)
+    creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Factura(Base):
+    __tablename__ = "facturas"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    obra_id: Mapped[str] = mapped_column(ForeignKey("obras.id"), index=True)
+    numero: Mapped[str] = mapped_column(String(40), default="")
+    fecha: Mapped[date] = mapped_column(Date)
+    concepto: Mapped[str] = mapped_column(String(200), default="")
+    valor: Mapped[float] = mapped_column(Float)
+    creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Gasto(Base):
+    __tablename__ = "gastos"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    obra_id: Mapped[str] = mapped_column(ForeignKey("obras.id"), index=True)
+    fecha: Mapped[date] = mapped_column(Date)
+    categoria: Mapped[str] = mapped_column(String(60), default="Otros")
+    descripcion: Mapped[str] = mapped_column(String(200), default="")
+    valor: Mapped[float] = mapped_column(Float)
+    creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

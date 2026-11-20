@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routers import asistencia, auth, bitacora, contrato, empresa, negocio, platform, public
+from .routers import asistencia, auth, bitacora, contrato, empresa, epp, finanzas, negocio, nomina, platform, public
 
 settings = get_settings()
 
@@ -29,5 +29,5 @@ def health():
     return {"ok": True}
 
 
-for r in (public.router, auth.router, platform.router, empresa.router, negocio.router, asistencia.router, contrato.router, bitacora.router):
+for r in (public.router, auth.router, platform.router, empresa.router, negocio.router, asistencia.router, contrato.router, bitacora.router, epp.router, nomina.router, finanzas.router):
     app.include_router(r)
