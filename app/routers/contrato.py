@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from .. import catalog
 from ..audit import registrar
-from ..deps import Ctx, contexto, exigir_modulo
+from ..deps import Ctx, contexto, exigir_modulo, modulos_de_usuario
 from ..models import Actividad, Asistencia, Contrato, Obra, RegistroBitacora
 from ..reglas import ejecutado_por_actividad, resumen_obra
 from ..schemas import ContratoIn
@@ -17,8 +17,9 @@ ROLES_ESCRIBE = ("admin", "gerencia")
 
 def acceso(ctx: Ctx, *modulos: str) -> None:
     """Permite el acceso si la empresa tiene licenciado alguno de los módulos y el rol puede verlo."""
+    propios = modulos_de_usuario(ctx.usuario, ctx.est)
     for m in modulos:
-        if m in ctx.est.modulos and (ctx.usuario.rol == "super_admin" or ctx.usuario.rol in catalog.ROLES_POR_MODULO.get(m, ("admin",))):
+        if m in propios:
             return
     raise HTTPException(403, "Su licencia o su rol no permiten ver esta información")
 

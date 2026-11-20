@@ -96,15 +96,37 @@ def contexto(request: Request, s: Sesion = Depends(sesion_actual), db: Session =
     return Ctx(sesion=s, usuario=s.usuario, empresa=empresa, est=est, db=db)
 
 
+def modulos_de_usuario(u: Usuario, est: EstadoEmpresa) -> set[str]:
+    """Módulos que el usuario puede usar: lo licenciado, filtrado por lo que su admin le asignó (o por su rol si no le asignó nada)."""
+    lic = set(est.modulos)
+    if u.rol in ("super_admin", "admin"):
+        return lic
+    if u.modulos is None:
+        return {m for m in lic if u.rol in catalog.ROLES_POR_MODULO.get(m, ("admin",))}
+    return (set(u.modulos) & lic) - {"usuarios"}
+
+
 def exigir_modulo(clave: str, *roles: str):
-    """Dependencia: el módulo debe estar licenciado y el rol autorizado."""
+    """Dependencia: el módulo debe estar licenciado y el usuario autorizado.
+
+    Autoriza el admin, o quien tenga el módulo (por su rol o porque el admin se lo asignó). Si el admin se lo asignó
+    expresamente, puede usarlo completo; si solo lo tiene por su rol, escribe únicamente los roles indicados.
+    Las obras son de consulta para todo el personal de la empresa (las necesitan asistencia, EPP y personal).
+    """
 
     def dep(ctx: Ctx = Depends(contexto)) -> Ctx:
         if clave not in ctx.est.modulos:
             raise HTTPException(403, f"El módulo «{catalog.MODULOS[clave].nombre}» no está incluido en su licencia")
-        permitidos = roles or catalog.ROLES_POR_MODULO.get(clave, ("admin",))
-        if ctx.usuario.rol != "super_admin" and ctx.usuario.rol not in permitidos:
-            raise HTTPException(403, "Su rol no tiene acceso a este módulo")
+        u = ctx.usuario
+        if u.rol in ("super_admin", "admin"):
+            return ctx
+        if clave == "obras" and not roles:
+            return ctx
+        if clave not in modulos_de_usuario(u, ctx.est):
+            raise HTTPException(403, "No tiene acceso a este módulo")
+        asignado = u.modulos is not None and clave in u.modulos
+        if roles and u.rol not in roles and not asignado:
+            raise HTTPException(403, "Su rol no puede modificar en este módulo")
         return ctx
 
     return dep

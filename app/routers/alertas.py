@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from .. import catalog
 from ..calculos import resumen_financiero
-from ..deps import Ctx, contexto
+from ..deps import Ctx, contexto, modulos_de_usuario
 from ..festivos import dow, es_festivo
 from ..models import (Actividad, Asignacion, Asistencia, Contrato, Factura, Gasto, Obra, RegistroBitacora, SolicitudEPP, Trabajador)
 from ..reglas import habilitacion, resumen_obra
@@ -17,7 +17,10 @@ ORDEN = {"alta": 0, "media": 1, "baja": 2}
 
 
 def _ve(ctx: Ctx, modulo: str) -> bool:
-    return modulo in ctx.est.modulos and (ctx.usuario.rol == "super_admin" or ctx.usuario.rol in catalog.ROLES_POR_MODULO.get(modulo, ("admin",)))
+    """El usuario ve el módulo y no ha desactivado sus alertas (el admin elige de cuáles módulos recibe)."""
+    if modulo not in modulos_de_usuario(ctx.usuario, ctx.est):
+        return False
+    return ctx.usuario.alertas is None or modulo in ctx.usuario.alertas
 
 
 def calcular_alertas(ctx: Ctx, hoy: date) -> list[dict]:
@@ -27,7 +30,8 @@ def calcular_alertas(ctx: Ctx, hoy: date) -> list[dict]:
         out.append({"tipo": tipo, "severidad": sev, "titulo": titulo, "detalle": detalle, "href": href})
 
     lic = ctx.est
-    if lic.estado in ("por_vencer", "gracia", "vencida", "prueba") and lic.mensaje:
+    quiere_lic = ctx.usuario.rol in ("admin", "super_admin") if ctx.usuario.alertas is None else "licencia" in ctx.usuario.alertas
+    if quiere_lic and lic.estado in ("por_vencer", "gracia", "vencida", "prueba") and lic.mensaje:
         add("licencia", "alta" if lic.estado in ("gracia", "vencida") else "media", "Licencia", lic.mensaje, "/licencia")
 
     obras = {o.id: o for o in db.scalars(select(Obra).where(Obra.empresa_id == e, Obra.estado == "activa"))}

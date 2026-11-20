@@ -166,12 +166,16 @@ class UsuarioIn(BaseModel):
     nombre: str = Field(min_length=2, max_length=200)
     correo: EmailStr
     rol: Literal["admin", "gerencia", "rrhh", "sst", "residente"]
+    modulos: list[str] | None = None  # None = los de su rol
+    alertas: list[str] | None = None  # None = alertas de los módulos que ve
 
 
 class UsuarioPatchIn(BaseModel):
     nombre: str | None = None
     rol: Literal["admin", "gerencia", "rrhh", "sst", "residente"] | None = None
     activo: bool | None = None
+    modulos: list[str] | None = None  # enviar null = volver a los de su rol
+    alertas: list[str] | None = None
 
 
 # ---------- Negocio ----------

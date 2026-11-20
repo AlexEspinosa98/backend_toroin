@@ -59,6 +59,9 @@ class Usuario(Base):
     debe_cambiar_password: Mapped[bool] = mapped_column(Boolean, default=False)
     creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     ultimo_acceso: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Permisos que define el admin de la empresa. None = los que trae su rol por defecto.
+    modulos: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    alertas: Mapped[list | None] = mapped_column(JSON, nullable=True)  # módulos de los que recibe alertas; None = los que ve
 
     empresa: Mapped[Empresa | None] = relationship(back_populates="usuarios")
 

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from .. import catalog
 from ..audit import registrar
 from ..db import get_db
-from ..deps import Sesion, sesion_actual
+from ..deps import Sesion, modulos_de_usuario, sesion_actual
 from ..licensing import resolver
 from ..models import Empresa, Usuario
 from ..schemas import CambiarPasswordIn, LoginIn
@@ -69,10 +69,7 @@ def me(s: Sesion = Depends(sesion_actual), db: Session = Depends(get_db)):
         return {**base, "ambito": "plataforma", "empresa": None, "licencia": None, "modulos": []}
     empresa = db.get(Empresa, s.empresa_id)
     est = resolver(db, empresa)
-    visibles = [
-        k for k in est.modulos
-        if k in catalog.ROLES_POR_MODULO and (u.rol == "super_admin" or u.rol in catalog.ROLES_POR_MODULO[k])
-    ]
+    visibles = [k for k in modulos_de_usuario(u, est) if k in catalog.ROLES_POR_MODULO]
     orden = list(catalog.MODULOS)
     return {
         **base,

@@ -125,7 +125,8 @@ def test_roles_dentro_de_la_empresa(client, root):
     h = login(client, "admin@acme.com", out["admin"]["password_temporal"], "acme")
     u = client.post("/empresa/usuarios", json={"nombre": "Sara", "correo": "sara@acme.com", "rol": "sst"}, headers=h).json()
     hs = login(client, "sara@acme.com", u["password_temporal"], "acme")
-    assert client.get("/obras", headers=hs).status_code == 403  # SST no ve obras
+    assert client.get("/obras", headers=hs).status_code == 200  # las obras son de consulta para todos (asistencia/EPP las necesitan)
+    assert client.post("/obras", json={"nombre": "x"}, headers=hs).status_code == 403
     assert client.get("/personal", headers=hs).status_code == 200
     assert client.get("/empresa/usuarios", headers=hs).status_code == 403
     me = client.get("/auth/me", headers=hs).json()
