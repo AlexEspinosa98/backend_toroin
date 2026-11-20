@@ -46,9 +46,13 @@ def test_bitacora_avance_y_reglas(client, root):
     assert client.put("/bitacora", json={**base, "por_trabajador": {ana["id"]: 5}}, headers=h).status_code == 422
     # atraso sin motivo
     assert client.put("/bitacora", json={**base, "horas_atraso": 2}, headers=h).status_code == 422
-    assert client.put("/bitacora", json={**base, "horas_atraso": 2, "motivo_atraso": "Clima"}, headers=h).status_code == 200
+    assert client.put("/bitacora", json={**base, "horas_atraso": 2, "motivo_atraso": "Clima", "acciones": "Doble turno"}, headers=h).status_code == 200
     # mismo día y actividad: se corrige, no se duplica
     assert len(client.get("/bitacora", params={"obra_id": obra["id"], "fecha": str(HOY)}, headers=h).json()) == 1
+    # sin acciones no se acepta el atraso
+    assert client.put("/bitacora", json={**base, "horas_atraso": 2, "motivo_atraso": "Clima"}, headers=h).status_code == 422
+    # no se puede superar el saldo del contrato (100 M2)
+    assert client.put("/bitacora", json={**base, "cantidad": 101}, headers=h).status_code == 422
     # el avance entra al tablero
     res = client.get(f"/obras/{obra['id']}/contrato", headers=h).json()
     assert res["resumen"]["valor_ejecutado"] == 40000 and abs(res["resumen"]["avance_fisico"] - 0.2) < 1e-9

@@ -7,7 +7,7 @@ from sqlalchemy import select
 from .. import catalog
 from ..audit import registrar
 from ..deps import Ctx, contexto, exigir_modulo
-from ..models import Actividad, Contrato, Obra, RegistroBitacora
+from ..models import Actividad, Asistencia, Contrato, Obra, RegistroBitacora
 from ..reglas import ejecutado_por_actividad, resumen_obra
 from ..schemas import ContratoIn
 
@@ -52,6 +52,33 @@ def datos_obra(ctx: Ctx, obra: Obra, fecha: date | None = None) -> dict:
         "actividades": [_act(a, ejec.get(a.id, 0.0)) for a in acts],
         "resumen": resumen_obra(c, acts, regs, fecha or date.today()),
     }
+
+
+@router.get("/contratos")
+def listar_contratos(ctx: Ctx = Depends(contexto)):
+    """Obras de la empresa con el estado de su contrato (para el listado y el tablero general)."""
+    acceso(ctx, "contrato", "finanzas", "pagos")
+    obras = ctx.db.scalars(select(Obra).where(Obra.empresa_id == ctx.empresa_id).order_by(Obra.nombre))
+    out = []
+    for o in obras:
+        d = datos_obra(ctx, o)
+        c = d["contrato"]
+        out.append({"obra": d["obra"], "resumen": d["resumen"],
+                    "contrato": {k: c[k] for k in ("numero", "contratante", "fecha_inicio", "fecha_fin", "valor_total")} if c else None,
+                    "actividades": len(d["actividades"])})
+    return out
+
+
+@router.get("/obras/{obra_id}/presentes")
+def presentes_por_dia(obra_id: str, desde: date, hasta: date, ctx: Ctx = Depends(contexto)):
+    acceso(ctx, "contrato", "asistencia")
+    obra_de(ctx, obra_id)
+    filas = ctx.db.scalars(select(Asistencia).where(Asistencia.empresa_id == ctx.empresa_id, Asistencia.obra_id == obra_id,
+                                                    Asistencia.fecha >= desde, Asistencia.fecha <= hasta, Asistencia.asistio.is_(True)))
+    cuenta: dict[str, int] = {}
+    for a in filas:
+        cuenta[str(a.fecha)] = cuenta.get(str(a.fecha), 0) + 1
+    return cuenta
 
 
 @router.get("/obras/{obra_id}/contrato")

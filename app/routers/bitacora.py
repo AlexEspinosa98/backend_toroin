@@ -98,6 +98,13 @@ def guardar_registro(datos: RegistroBitacoraIn, request: Request, ctx: Ctx = Dep
         raise HTTPException(404, "Actividad no encontrada")
     if datos.horas_atraso > 0 and datos.motivo_atraso not in MOTIVOS_ATRASO:
         raise HTTPException(422, "Indique el motivo del atraso")
+    if datos.horas_atraso > 0 and not datos.acciones.strip():
+        raise HTTPException(422, "Describa la acción para recuperar el atraso")
+    otros = ctx.db.scalars(select(RegistroBitacora).where(RegistroBitacora.empresa_id == ctx.empresa_id, RegistroBitacora.actividad_id == act.id,
+                                                          RegistroBitacora.fecha != datos.fecha))
+    saldo = act.cantidad - sum(r.cantidad for r in otros)
+    if datos.cantidad > saldo + 1e-9:
+        raise HTTPException(422, f"El avance ({datos.cantidad:g} {act.um}) supera el saldo del contrato ({max(saldo, 0):g} {act.um})")
     if datos.trabajadores:
         validos = {a.trabajador_id for a in asignados_en(ctx.db, ctx.empresa_id, datos.obra_id, datos.fecha)}
         if not set(datos.trabajadores) <= validos:
