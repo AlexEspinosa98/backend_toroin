@@ -154,6 +154,7 @@ class Obra(Base):
     nombre: Mapped[str] = mapped_column(String(200))
     ciudad: Mapped[str] = mapped_column(String(100), default="")
     estado: Mapped[str] = mapped_column(String(20), default="activa")
+    ingresos_proyectados: Mapped[float | None] = mapped_column(Float, nullable=True)
     creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
@@ -202,4 +203,104 @@ class Asistencia(Base):
     motivo: Mapped[str | None] = mapped_column(String(40), nullable=True)
     detalle: Mapped[str] = mapped_column(String(300), default="")
     registrado_por: Mapped[str] = mapped_column(String(200), default="")
+    creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Contrato(Base):
+    """Contrato de una obra (uno por obra), tal como lo entrega el contratante."""
+    __tablename__ = "contratos"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    obra_id: Mapped[str] = mapped_column(ForeignKey("obras.id"), unique=True)
+    numero: Mapped[str] = mapped_column(String(60), default="")
+    contratante: Mapped[str] = mapped_column(String(200), default="")
+    nit_contratante: Mapped[str] = mapped_column(String(40), default="")
+    contratista: Mapped[str] = mapped_column(String(200), default="")
+    proyecto: Mapped[str] = mapped_column(String(300), default="")
+    descripcion: Mapped[str] = mapped_column(Text, default="")
+    tipo: Mapped[str] = mapped_column(String(80), default="")
+    fecha_inicio: Mapped[date] = mapped_column(Date)
+    fecha_fin: Mapped[date] = mapped_column(Date)
+    valor_total: Mapped[float] = mapped_column(Float, default=0)
+    valor_antes_aiu: Mapped[float] = mapped_column(Float, default=0)
+    aiu: Mapped[float] = mapped_column(Float, default=0)
+    pct_administracion: Mapped[float] = mapped_column(Float, default=0)
+    pct_imprevistos: Mapped[float] = mapped_column(Float, default=0)
+    pct_utilidad: Mapped[float] = mapped_column(Float, default=0)
+    iva_utilidad: Mapped[float] = mapped_column(Float, default=0)
+    pct_rete_garantia: Mapped[float] = mapped_column(Float, default=0)
+    rete_garantia: Mapped[float] = mapped_column(Float, default=0)
+    valor_neto: Mapped[float] = mapped_column(Float, default=0)
+    forma_pago: Mapped[str] = mapped_column(String(120), default="")
+    pagos: Mapped[list] = mapped_column(JSON, default=list)
+    advertencias: Mapped[list] = mapped_column(JSON, default=list)
+    archivo: Mapped[str] = mapped_column(String(200), default="")
+    actualizado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Actividad(Base):
+    __tablename__ = "actividades"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    obra_id: Mapped[str] = mapped_column(ForeignKey("obras.id"), index=True)
+    item: Mapped[str] = mapped_column(String(30), default="")
+    grupo: Mapped[int] = mapped_column(Integer, default=0)
+    capitulo: Mapped[str] = mapped_column(String(120), default="")
+    nombre: Mapped[str] = mapped_column(String(300))
+    ubicacion: Mapped[str] = mapped_column(String(60), default="")
+    um: Mapped[str] = mapped_column(String(12), default="UND")
+    cantidad: Mapped[float] = mapped_column(Float)
+    valor_unitario: Mapped[float] = mapped_column(Float, default=0)
+    valor_total: Mapped[float] = mapped_column(Float, default=0)
+    tarifa: Mapped[float | None] = mapped_column(Float, nullable=True)  # destajo por unidad que se paga a la cuadrilla
+    advertencias: Mapped[list] = mapped_column(JSON, default=list)
+
+
+class RegistroBitacora(Base):
+    __tablename__ = "bitacora"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    obra_id: Mapped[str] = mapped_column(ForeignKey("obras.id"), index=True)
+    fecha: Mapped[date] = mapped_column(Date, index=True)
+    actividad_id: Mapped[str] = mapped_column(ForeignKey("actividades.id"), index=True)
+    cantidad: Mapped[float] = mapped_column(Float, default=0)
+    personas: Mapped[int] = mapped_column(Integer, default=0)
+    trabajadores: Mapped[list] = mapped_column(JSON, default=list)
+    por_trabajador: Mapped[dict] = mapped_column(JSON, default=dict)
+    horas_atraso: Mapped[float] = mapped_column(Float, default=0)
+    motivo_atraso: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    acciones: Mapped[str] = mapped_column(Text, default="")
+    observaciones: Mapped[str] = mapped_column(Text, default="")
+    fotos: Mapped[list] = mapped_column(JSON, default=list)
+    registrado_por: Mapped[str] = mapped_column(String(200), default="")
+    creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Tarea(Base):
+    """Actividad asignada a un trabajador desde `desde` hasta `hasta` (o hasta nuevo aviso). actividad_id vacío = sin tarea."""
+    __tablename__ = "tareas"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    obra_id: Mapped[str] = mapped_column(ForeignKey("obras.id"), index=True)
+    trabajador_id: Mapped[str] = mapped_column(ForeignKey("trabajadores.id"), index=True)
+    actividad_id: Mapped[str] = mapped_column(String(36), default="")
+    desde: Mapped[date] = mapped_column(Date)
+    hasta: Mapped[date | None] = mapped_column(Date, nullable=True)
+    instruccion: Mapped[str] = mapped_column(String(300), default="")
+    asignado_por: Mapped[str] = mapped_column(String(200), default="")
+    creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Foto(Base):
+    """Foto de evidencia en base64 (data URI), comprimida por el cliente."""
+    __tablename__ = "fotos"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    obra_id: Mapped[str] = mapped_column(ForeignKey("obras.id"), index=True)
+    datos: Mapped[str] = mapped_column(Text)
     creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

@@ -215,3 +215,87 @@ class AsistenciaIn(BaseModel):
     obra_id: str
     fecha: date
     marcas: list[MarcaAsistenciaIn]
+
+
+class ActividadIn(BaseModel):
+    id: str | None = None
+    item: str = ""
+    grupo: int = 0
+    capitulo: str = ""
+    nombre: str = Field(min_length=1, max_length=300)
+    ubicacion: str = ""
+    um: str = Field(default="UND", max_length=12)
+    cantidad: float = Field(gt=0)
+    valor_unitario: float = Field(default=0, ge=0)
+    tarifa: float | None = Field(default=None, ge=0)
+    advertencias: list[str] = []
+
+
+class PagoProgramadoIn(BaseModel):
+    fecha: date
+    valor: float
+    concepto: str = ""
+
+
+class ContratoIn(BaseModel):
+    numero: str = ""
+    contratante: str = ""
+    nit_contratante: str = ""
+    contratista: str = ""
+    proyecto: str = ""
+    descripcion: str = ""
+    tipo: str = ""
+    fecha_inicio: date
+    fecha_fin: date
+    valor_total: float = Field(default=0, ge=0)
+    valor_antes_aiu: float = 0
+    aiu: float = 0
+    pct_administracion: float = 0
+    pct_imprevistos: float = 0
+    pct_utilidad: float = 0
+    iva_utilidad: float = 0
+    pct_rete_garantia: float = 0
+    rete_garantia: float = 0
+    valor_neto: float = 0
+    forma_pago: str = ""
+    pagos: list[PagoProgramadoIn] = []
+    advertencias: list[str] = []
+    archivo: str = ""
+    actividades: list[ActividadIn] = Field(min_length=1)
+    ingresos_proyectados: float | None = Field(default=None, ge=0)
+
+    @field_validator("fecha_fin")
+    @classmethod
+    def _fechas(cls, v, info):
+        if info.data.get("fecha_inicio") and v <= info.data["fecha_inicio"]:
+            raise ValueError("La fecha de terminación debe ser posterior al inicio")
+        return v
+
+
+class RegistroBitacoraIn(BaseModel):
+    obra_id: str
+    fecha: date
+    actividad_id: str
+    cantidad: float = Field(ge=0)
+    personas: int = Field(default=0, ge=0)
+    trabajadores: list[str] = []
+    por_trabajador: dict[str, float] = {}
+    horas_atraso: float = Field(default=0, ge=0, le=24)
+    motivo_atraso: str | None = None
+    acciones: str = ""
+    observaciones: str = ""
+    fotos: list[str] = []
+
+
+class AsignarTareasIn(BaseModel):
+    obra_id: str
+    trabajador_ids: list[str] = Field(min_length=1)
+    actividad_id: str = ""
+    desde: date
+    hasta: date | None = None
+    instruccion: str = Field(default="", max_length=300)
+
+
+class FotoIn(BaseModel):
+    obra_id: str
+    datos: str

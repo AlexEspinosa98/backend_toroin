@@ -41,3 +41,42 @@ def habilitacion(t, fecha: date) -> Habilitacion:
     if min(de, da) <= DIAS_ALERTA:
         return Habilitacion("por-vencer", f"Examen médico vence en {de} días" if de <= da else f"Curso de alturas vence en {da} días", de, da)
     return Habilitacion("habilitado", "Examen y curso de alturas vigentes", de, da)
+
+
+# ---------------- Avance de obra ----------------
+def ejecutado_por_actividad(registros) -> dict[str, float]:
+    m: dict[str, float] = {}
+    for r in registros:
+        m[r.actividad_id] = m.get(r.actividad_id, 0.0) + r.cantidad
+    return m
+
+
+def resumen_obra(contrato, actividades, registros, fecha: date) -> dict:
+    """Avance físico (valorizado), avance en tiempo, índice y semáforo."""
+    if not contrato:
+        return {"semaforo": "sin-contrato", "valor_contrato": 0, "valor_ejecutado": 0, "avance_fisico": 0, "avance_tiempo": 0, "dias_restantes": 0, "indice": 0}
+    ejec = ejecutado_por_actividad(registros)
+    valor_contrato = sum(a.valor_total for a in actividades)
+    valor_ejec = sum(min(ejec.get(a.id, 0.0), a.cantidad) * a.valor_unitario for a in actividades)
+    plazo = max(1, (contrato.fecha_fin - contrato.fecha_inicio).days)
+    transcurrido = min(max(0, (fecha - contrato.fecha_inicio).days), plazo)
+    fisico = valor_ejec / valor_contrato if valor_contrato else 0
+    tiempo = transcurrido / plazo
+    indice = fisico / tiempo if tiempo > 0 else 1
+    semaforo = "al-dia" if tiempo == 0 or indice >= 0.95 else "atencion" if indice >= 0.85 else "atrasada"
+    return {"semaforo": semaforo, "valor_contrato": valor_contrato, "valor_ejecutado": valor_ejec, "avance_fisico": fisico, "avance_tiempo": tiempo,
+            "dias_restantes": (contrato.fecha_fin - fecha).days, "indice": indice}
+
+
+def tarea_vigente(tareas, trabajador_id: str, fecha: date):
+    """La de `desde` más reciente (y, a igual fecha, la más nueva). Sin actividad = sin tarea."""
+    mejor = None
+    for t in tareas:
+        if t.trabajador_id != trabajador_id or t.desde > fecha or (t.hasta and fecha > t.hasta):
+            continue
+        if mejor is None or t.desde > mejor.desde or (t.desde == mejor.desde and t.creado > mejor.creado):
+            mejor = t
+    return mejor if mejor and mejor.actividad_id else None
+
+
+MOTIVOS_ATRASO = ("Material", "Herramientas", "Transporte", "Personal", "Clima", "Otros")
