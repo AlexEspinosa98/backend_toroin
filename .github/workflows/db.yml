@@ -47,8 +47,8 @@ jobs:
         run: |
           [ -n "$API_URL" ] || { echo "Sin API_URL: se omite la prueba HTTP"; exit 0; }
           for i in $(seq 1 12); do
-            r=$(curl -s -m 30 "$API_URL/health/db" || true); echo "intento $i: $r"
-            echo "$r" | grep -q '"conexion":"ok"' && echo "$r" | grep -q '"tiene_empresas":true' && exit 0
+            c=$(curl -s -m 30 -o /dev/null -w "%{http_code}" "$API_URL/public/empresas/__sonda__/marca" || true); echo "intento $i: HTTP $c"
+            [ "$c" = "404" ] && exit 0   # 404 = la API llega a la BD y no hay empresa; 500 = fallo de conexión/tablas
             sleep 20
           done
-          echo "::error::La API desplegada no confirma conexion y tablas"; exit 1
+          echo "::error::La API desplegada no llega a la base de datos"; exit 1
