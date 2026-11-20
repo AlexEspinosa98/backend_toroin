@@ -29,5 +29,24 @@ def health():
     return {"ok": True}
 
 
+@app.get("/health/db", tags=["sistema"])
+def health_db():
+    """Diagnóstico de conexión (sin secretos). Quitar cuando el despliegue esté estable."""
+    import re
+
+    from sqlalchemy import inspect, text
+
+    from .db import engine
+
+    try:
+        with engine.connect() as c:
+            c.execute(text("select 1"))
+            tablas = sorted(inspect(c).get_table_names())
+        return {"conexion": "ok", "tablas": len(tablas), "tiene_empresas": "empresas" in tablas}
+    except Exception as e:  # noqa: BLE001
+        msg = re.sub(r"(://[^:/@\s]+:)[^@\s]+@", r"\1***@", str(e))
+        return {"conexion": "error", "tipo": type(e).__name__, "detalle": msg[:300]}
+
+
 for r in (public.router, auth.router, platform.router, empresa.router, negocio.router):
     app.include_router(r)
