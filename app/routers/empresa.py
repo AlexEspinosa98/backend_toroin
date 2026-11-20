@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from .. import catalog
 from ..audit import registrar
 from ..deps import Ctx, contexto, exigir_admin_empresa, exigir_modulo
-from ..models import Obra, Trabajador, Usuario
+from ..models import Auditoria, Obra, Trabajador, Usuario
 from ..schemas import MarcaIn, UsuarioIn, UsuarioPatchIn
 from ..security import hash_password, password_temporal
 from .auth import _marca
@@ -112,3 +112,13 @@ def reiniciar_password(uid: str, request: Request, ctx: Ctx = Depends(exigir_mod
     registrar(ctx.db, accion="usuario.reiniciar_password", usuario=ctx.usuario, empresa_id=ctx.empresa_id, entidad="usuario", entidad_id=u.id, request=request)
     ctx.db.commit()
     return {"password_temporal": clave}
+
+
+@router.get("/actividad")
+def actividad(limite: int = 100, solo_errores: bool = False, ctx: Ctx = Depends(exigir_admin_empresa)):
+    """Registro de actividad de la empresa (quién hizo qué) y errores del sistema."""
+    q = select(Auditoria).where(Auditoria.empresa_id == ctx.empresa_id).order_by(Auditoria.fecha.desc()).limit(min(max(limite, 1), 300))
+    if solo_errores:
+        q = q.where(Auditoria.accion == "error.500")
+    return [{"id": a.id, "fecha": a.fecha, "usuario": a.usuario_correo, "accion": a.accion, "entidad": a.entidad, "entidad_id": a.entidad_id,
+             "detalle": {k: v for k, v in (a.detalle or {}).items() if k != "traza"}} for a in ctx.db.scalars(q)]
