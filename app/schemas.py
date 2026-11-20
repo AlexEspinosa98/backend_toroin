@@ -192,3 +192,26 @@ class TrabajadorIn(BaseModel):
     alturas_vence: date | None = None
     jornal: float | None = Field(default=None, ge=0)
     notas: list[str] = []
+
+
+class AsignacionIn(BaseModel):
+    trabajador_id: str
+    obra_id: str
+    fecha_ingreso: date
+
+
+class RetiroIn(BaseModel):
+    fecha_retiro: date
+
+
+class MarcaAsistenciaIn(BaseModel):
+    trabajador_id: str
+    asistio: bool
+    motivo: str | None = None
+    detalle: str = Field(default="", max_length=300)
+
+
+class AsistenciaIn(BaseModel):
+    obra_id: str
+    fecha: date
+    marcas: list[MarcaAsistenciaIn]

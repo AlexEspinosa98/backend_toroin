@@ -173,3 +173,33 @@ class Trabajador(Base):
     jornal: Mapped[float | None] = mapped_column(Float, nullable=True)
     notas: Mapped[list] = mapped_column(JSON, default=list)
     creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Asignacion(Base):
+    """Trabajador asignado a una obra desde fecha_ingreso (hasta fecha_retiro, si ya salió)."""
+    __tablename__ = "asignaciones"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    trabajador_id: Mapped[str] = mapped_column(ForeignKey("trabajadores.id"), index=True)
+    obra_id: Mapped[str] = mapped_column(ForeignKey("obras.id"), index=True)
+    fecha_ingreso: Mapped[date] = mapped_column(Date)
+    fecha_retiro: Mapped[date | None] = mapped_column(Date, nullable=True)
+    creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Asistencia(Base):
+    """Marca diaria de un trabajador en una obra (una por obra, trabajador y fecha)."""
+    __tablename__ = "asistencias"
+    __table_args__ = (UniqueConstraint("obra_id", "trabajador_id", "fecha", name="uq_asistencia_dia"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    obra_id: Mapped[str] = mapped_column(ForeignKey("obras.id"), index=True)
+    trabajador_id: Mapped[str] = mapped_column(ForeignKey("trabajadores.id"), index=True)
+    fecha: Mapped[date] = mapped_column(Date, index=True)
+    asistio: Mapped[bool] = mapped_column(Boolean)
+    motivo: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    detalle: Mapped[str] = mapped_column(String(300), default="")
+    registrado_por: Mapped[str] = mapped_column(String(200), default="")
+    creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
