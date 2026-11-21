@@ -145,8 +145,9 @@ def calcular_cronograma(tareas, actividades: dict, regs, hoy: date) -> dict:
                       "estado": estado, "inicio_real": inicio_real, "fin_real": fin_real, "fin_proyectado": fin_proy, "atraso_dias": atraso,
                       "critica": c.get("critica", False), "holgura": c.get("holgura"), "inicio_calculado": c.get("inicio_calculado"), "fin_calculado": c.get("fin_calculado")})
     filas.sort(key=lambda f: (f["inicio"], f["grupo"], f["nombre"]))
-    fin_plan = max((f["fin_calculado"] or f["fin"] for f in filas), default=None)
-    fin_proy = max((f["fin_proyectado"] or f["fin"] for f in filas), default=None)
+    fin_plan = max((f["fin"] for f in filas), default=None)  # lo que programó el usuario
+    # el fin proyectado suma los atrasos reales y lo que las predecesoras empujan más allá de las fechas programadas
+    fin_proy = max((max(f["fin_proyectado"] or f["fin"], f["fin_calculado"] or f["fin"]) for f in filas), default=None)
     return {"tareas": filas, "inicio": min((f["inicio"] for f in filas), default=None), "fin_plan": fin_plan, "fin_proyectado": fin_proy,
             "atraso_proyecto": max(0, (fin_proy - fin_plan).days) if fin_plan and fin_proy else 0,
             "atrasadas": sum(1 for f in filas if f["estado"] == "Atrasada"), "criticas_atrasadas": sum(1 for f in filas if f["estado"] == "Atrasada" and f["critica"]),
