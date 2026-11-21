@@ -8,9 +8,13 @@ from .. import catalog
 from ..calculos import resumen_financiero
 from ..deps import Ctx, contexto, modulos_de_usuario
 from ..festivos import dow, es_festivo
-from ..models import (Actividad, Asignacion, Asistencia, Contrato, Factura, Gasto, Obra, RegistroBitacora, SolicitudEPP, Trabajador)
+from ..models import (Actividad, Asignacion, Asistencia, Contrato, Factura, Gasto, Obra, OrdenCompra, RegistroBitacora, Requisicion, SolicitudEPP, Trabajador)
 from ..reglas import habilitacion, resumen_obra
+from .compras import _totales
+from .cronograma import datos_cronograma
+from .inventario import _materiales
 from .nomina import cargar_cfg
+from .presupuesto import datos_presupuesto
 
 router = APIRouter(tags=["alertas"])
 ORDEN = {"alta": 0, "media": 1, "baja": 2}
@@ -113,6 +117,47 @@ def calcular_alertas(ctx: Ctx, hoy: date) -> list[dict]:
                 add("finanzas", "alta", f"Pérdida proyectada: {o.nombre}", f"Utilidad proyectada {r['utilidad_proyectada']:,.0f} COP", f"/finanzas")
             elif r["margen_proyectado"] < 0.05:
                 add("finanzas", "media", f"Margen bajo: {o.nombre}", f"Margen proyectado {r['margen_proyectado'] * 100:.1f} %", "/finanzas")
+
+    if _ve(ctx, "presupuesto"):
+        for o in obras.values():
+            d = datos_presupuesto(ctx, o, hoy)["resumen"]
+            if not d["presupuesto"]:
+                continue
+            if d["real"] > d["presupuesto"]:
+                add("presupuesto", "alta", f"Presupuesto superado: {o.nombre}", f"Se ha gastado {d['real']:,.0f} de {d['presupuesto']:,.0f} COP", "/presupuesto")
+            elif d["semaforo"] == "sobrecosto":
+                add("presupuesto", "alta", f"Sobrecosto proyectado: {o.nombre}", f"Índice de costo {d['cpi']:.2f}: se gasta más de lo que avanza la obra" if d["cpi"] else "Gasto por encima del avance", "/presupuesto")
+            elif d["semaforo"] == "atencion":
+                add("presupuesto", "media", f"Costos en atención: {o.nombre}", f"Índice de costo {d['cpi']:.2f}", "/presupuesto")
+
+    if _ve(ctx, "cronograma"):
+        for o in obras.values():
+            d = datos_cronograma(ctx, o, hoy)
+            if not d["tareas"]:
+                continue
+            if d["criticas_atrasadas"]:
+                add("cronograma", "alta", f"Ruta crítica atrasada: {o.nombre}", f"{d['criticas_atrasadas']} actividad(es) críticas atrasadas; el fin proyectado se corre {d['atraso_proyecto']} días", "/cronograma")
+            elif d["atrasadas"]:
+                add("cronograma", "media", f"Actividades atrasadas: {o.nombre}", f"{d['atrasadas']} actividad(es) fuera de programa", "/cronograma")
+            if d["contrato"] and d["fin_proyectado"] and d["fin_proyectado"] > d["contrato"]["fin"]:
+                add("cronograma", "alta", f"Terminaría después del contrato: {o.nombre}", f"Fin proyectado {d['fin_proyectado']:%d/%m/%Y} frente a {d['contrato']['fin']:%d/%m/%Y}", "/cronograma")
+
+    if _ve(ctx, "inventario"):
+        bajos = [m for m in _materiales(ctx, None) if m["activo"] and m["bajo_minimo"]]
+        if bajos:
+            add("inventario", "media", f"{len(bajos)} material(es) bajo el mínimo", ", ".join(m["nombre"] for m in bajos[:5]) + ("…" if len(bajos) > 5 else ""), "/inventario")
+
+    if _ve(ctx, "compras"):
+        reqs = list(db.scalars(select(Requisicion).where(Requisicion.empresa_id == e, Requisicion.estado.in_(("Solicitada", "Aprobada")))))
+        sin_resolver = [r for r in reqs if r.estado == "Solicitada" and (hoy - r.fecha).days >= 2]
+        por_ordenar = [r for r in reqs if r.estado == "Aprobada"]
+        if sin_resolver:
+            add("compras", "media", f"{len(sin_resolver)} requisición(es) sin resolver", "Llevan 2 días o más esperando aprobación", "/compras")
+        if por_ordenar:
+            add("compras", "baja", f"{len(por_ordenar)} requisición(es) aprobadas sin orden de compra", "Falta generar la orden al proveedor", "/compras")
+        vencidas = [o for o in db.scalars(select(OrdenCompra).where(OrdenCompra.empresa_id == e, OrdenCompra.estado.in_(("Emitida", "Parcial")))) if o.fecha_entrega and o.fecha_entrega < hoy]
+        if vencidas:
+            add("compras", "alta", f"{len(vencidas)} orden(es) de compra con entrega vencida", ", ".join(f"OC-{o.numero:04d}" for o in vencidas[:5]), "/compras")
 
     out.sort(key=lambda a: ORDEN[a["severidad"]])
     return out

@@ -354,3 +354,134 @@ class IngresosIn(BaseModel):
 
 class TarifaIn(BaseModel):
     tarifa: float | None = Field(default=None, ge=0)
+
+
+# ---------- Presupuesto, cronograma, inventario, compras ----------
+CATEGORIAS_PRES = ("Mano de obra", "Materiales e insumos", "Herramientas y equipos", "Transporte", "Subcontratos y cortes", "Otros")
+
+
+class PresupuestoItemIn(BaseModel):
+    categoria: str
+    concepto: str = Field(default="", max_length=200)
+    valor: float = Field(ge=0)
+    actividad_id: str = ""
+
+    @field_validator("categoria")
+    @classmethod
+    def _cat(cls, v):
+        if v not in CATEGORIAS_PRES:
+            raise ValueError("Categoría de presupuesto no válida")
+        return v
+
+
+class PresupuestoIn(BaseModel):
+    items: list[PresupuestoItemIn] = Field(max_length=500)
+
+
+class TareaCronogramaIn(BaseModel):
+    actividad_id: str
+    inicio: date
+    fin: date
+    predecesoras: list[str] = []
+    notas: str = Field(default="", max_length=300)
+
+    @field_validator("fin")
+    @classmethod
+    def _fin(cls, v, info):
+        if info.data.get("inicio") and v < info.data["inicio"]:
+            raise ValueError("La fecha final no puede ser anterior a la inicial")
+        return v
+
+
+class CronogramaIn(BaseModel):
+    tareas: list[TareaCronogramaIn] = Field(max_length=1000)
+
+
+class MaterialIn(BaseModel):
+    nombre: str = Field(min_length=1, max_length=200)
+    unidad: str = Field(default="UND", max_length=12)
+    categoria: str = Field(default="", max_length=60)
+    stock_minimo: float = Field(default=0, ge=0)
+    activo: bool = True
+
+
+class MovimientoIn(BaseModel):
+    material_id: str
+    obra_id: str
+    fecha: date
+    tipo: Literal["entrada", "salida", "ajuste"]
+    cantidad: float  # entrada/salida > 0; ajuste puede ser negativo
+    costo_unitario: float = Field(default=0, ge=0)
+    actividad_id: str = ""
+    referencia: str = Field(default="", max_length=120)
+    detalle: str = Field(default="", max_length=300)
+
+
+class TrasladoIn(BaseModel):
+    material_id: str
+    obra_origen_id: str
+    obra_destino_id: str
+    fecha: date
+    cantidad: float = Field(gt=0)
+    detalle: str = Field(default="", max_length=300)
+
+
+class ProveedorIn(BaseModel):
+    nombre: str = Field(min_length=1, max_length=200)
+    nit: str = Field(default="", max_length=40)
+    contacto: str = Field(default="", max_length=120)
+    telefono: str = Field(default="", max_length=40)
+    correo: str = Field(default="", max_length=200)
+    direccion: str = Field(default="", max_length=200)
+    activo: bool = True
+
+
+class ItemRequisicionIn(BaseModel):
+    material_id: str = ""
+    descripcion: str = Field(default="", max_length=200)
+    unidad: str = Field(default="UND", max_length=12)
+    cantidad: float = Field(gt=0)
+
+
+class RequisicionIn(BaseModel):
+    obra_id: str
+    items: list[ItemRequisicionIn] = Field(min_length=1, max_length=100)
+    observaciones: str = Field(default="", max_length=300)
+
+
+class ResolverRequisicionIn(BaseModel):
+    estado: Literal["Aprobada", "Rechazada"]
+
+
+class ItemOrdenIn(BaseModel):
+    material_id: str = ""
+    descripcion: str = Field(default="", max_length=200)
+    unidad: str = Field(default="UND", max_length=12)
+    cantidad: float = Field(gt=0)
+    precio_unitario: float = Field(ge=0)
+
+
+class OrdenIn(BaseModel):
+    obra_id: str
+    proveedor_id: str
+    requisicion_id: str = ""
+    fecha: date
+    fecha_entrega: date | None = None
+    items: list[ItemOrdenIn] = Field(min_length=1, max_length=100)
+    iva_pct: float = Field(default=19, ge=0, le=40)
+    condiciones: str = Field(default="", max_length=300)
+    observaciones: str = Field(default="", max_length=300)
+
+
+class EstadoOrdenIn(BaseModel):
+    estado: Literal["Emitida", "Cancelada"]
+
+
+class RecepcionItemIn(BaseModel):
+    indice: int = Field(ge=0)
+    cantidad: float = Field(gt=0)
+
+
+class RecepcionIn(BaseModel):
+    fecha: date
+    items: list[RecepcionItemIn] = Field(min_length=1)

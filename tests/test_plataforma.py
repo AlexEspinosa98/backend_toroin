@@ -58,8 +58,8 @@ def test_modulo_con_vigencia(client, root):
     manana = (date.today() + timedelta(days=30)).isoformat()
     r = client.put(f"/platform/empresas/{eid}/modulos", json={"modulos": {"contrato": {"activo": True, "fin": manana}}}, headers=root)
     assert "contrato" in r.json()["modulos"]
-    # no se puede activar un módulo no construido ni uno núcleo
-    assert client.put(f"/platform/empresas/{eid}/modulos", json={"modulos": {"inventario": {"activo": True}}}, headers=root).status_code == 422
+    # no se puede activar un módulo inexistente ni uno núcleo
+    assert client.put(f"/platform/empresas/{eid}/modulos", json={"modulos": {"fantasma": {"activo": True}}}, headers=root).status_code == 422
     assert client.put(f"/platform/empresas/{eid}/modulos", json={"modulos": {"obras": {"activo": False}}}, headers=root).status_code == 422
 
 

@@ -36,11 +36,10 @@ MODULOS: dict[str, Modulo] = {m.clave: m for m in [
            requiere=("control_personal", "bitacora"), subfunciones=("destajo", "prenomina")),
     Modulo("finanzas", "Finanzas", "Ingresos, facturas, gastos y margen", requiere=("obras",)),
     Modulo("epp", "EPP / SST", "Solicitud, aprobación y entrega de dotación", requiere=("personal",)),
-    # Próximamente (aparecen en el catálogo pero no se pueden activar todavía)
-    Modulo("inventario", "Inventario y bodega", "Materiales por obra", requiere=("obras",), disponible=False),
-    Modulo("compras", "Compras y proveedores", "Requisiciones y órdenes de compra", requiere=("obras",), disponible=False),
-    Modulo("presupuesto", "Presupuesto vs. real", "APU y desviación por actividad", requiere=("contrato",), disponible=False),
-    Modulo("cronograma", "Cronograma / Gantt", "Ruta crítica y alertas", requiere=("obras",), disponible=False),
+    Modulo("inventario", "Inventario y bodega", "Materiales por obra, kardex, traslados y consumo por actividad", requiere=("obras",), subfunciones=("kardex", "traslados", "stock_minimo")),
+    Modulo("compras", "Compras y proveedores", "Requisiciones, órdenes de compra y recepción", requiere=("inventario",), subfunciones=("requisiciones", "ordenes", "recepcion")),
+    Modulo("presupuesto", "Presupuesto vs. real", "Presupuesto de costos y desviación frente al costo real", requiere=("contrato",), subfunciones=("desviacion", "indice_costo")),
+    Modulo("cronograma", "Cronograma / Gantt", "Programación por actividad, ruta crítica y atrasos", requiere=("contrato",), subfunciones=("gantt", "ruta_critica")),
 ]}
 
 NUCLEO: frozenset[str] = frozenset(k for k, m in MODULOS.items() if m.nucleo)
@@ -86,7 +85,7 @@ PLANES_DEFECTO = [
      "modulos": ["contrato", "personal", "asistencia", "bitacora", "control_personal", "epp"],
      "limites": {"max_usuarios": 15, "max_obras": 10, "max_trabajadores": 200}, "precio_ref": 0},
     {"clave": "completo", "nombre": "Completo", "descripcion": "Todos los módulos disponibles",
-     "modulos": ["contrato", "personal", "asistencia", "bitacora", "control_personal", "pagos", "finanzas", "epp"],
+     "modulos": ["contrato", "personal", "asistencia", "bitacora", "control_personal", "pagos", "finanzas", "epp", "inventario", "compras", "presupuesto", "cronograma"],
      "limites": {"max_usuarios": None, "max_obras": None, "max_trabajadores": None}, "precio_ref": 0},
 ]
 
@@ -104,5 +103,9 @@ ROLES_POR_MODULO: dict[str, tuple[str, ...]] = {
     "pagos": ("admin", "gerencia", "rrhh"),
     "finanzas": ("admin", "gerencia"),
     "epp": ("admin", "gerencia", "sst"),
+    "inventario": ("admin", "gerencia", "residente"),
+    "compras": ("admin", "gerencia", "residente"),
+    "presupuesto": ("admin", "gerencia"),
+    "cronograma": ("admin", "gerencia", "residente"),
     "usuarios": ("admin",),
 }

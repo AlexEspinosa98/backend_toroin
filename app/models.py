@@ -366,4 +366,123 @@ class Gasto(Base):
     categoria: Mapped[str] = mapped_column(String(60), default="Otros")
     descripcion: Mapped[str] = mapped_column(String(200), default="")
     valor: Mapped[float] = mapped_column(Float)
+    origen: Mapped[str] = mapped_column(String(60), default="")  # "oc:<id>" si lo generó una compra recibida
+    creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+# ---------------- Presupuesto vs. real ----------------
+class PresupuestoItem(Base):
+    __tablename__ = "presupuesto_items"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    obra_id: Mapped[str] = mapped_column(ForeignKey("obras.id"), index=True)
+    categoria: Mapped[str] = mapped_column(String(40))
+    concepto: Mapped[str] = mapped_column(String(200), default="")
+    valor: Mapped[float] = mapped_column(Float, default=0)
+    actividad_id: Mapped[str] = mapped_column(String(36), default="")  # opcional: costo de mano de obra de una actividad
+
+
+# ---------------- Cronograma ----------------
+class CronogramaTarea(Base):
+    __tablename__ = "cronograma_tareas"
+    __table_args__ = (UniqueConstraint("obra_id", "actividad_id", name="uq_cronograma_actividad"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    obra_id: Mapped[str] = mapped_column(ForeignKey("obras.id"), index=True)
+    actividad_id: Mapped[str] = mapped_column(String(36))
+    inicio: Mapped[date] = mapped_column(Date)
+    fin: Mapped[date] = mapped_column(Date)
+    predecesoras: Mapped[list] = mapped_column(JSON, default=list)  # ids de actividad que deben terminar antes
+    notas: Mapped[str] = mapped_column(String(300), default="")
+
+
+# ---------------- Inventario y bodega ----------------
+class Material(Base):
+    __tablename__ = "materiales"
+    __table_args__ = (UniqueConstraint("empresa_id", "nombre", name="uq_material_nombre"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    nombre: Mapped[str] = mapped_column(String(200))
+    unidad: Mapped[str] = mapped_column(String(12), default="UND")
+    categoria: Mapped[str] = mapped_column(String(60), default="")
+    stock_minimo: Mapped[float] = mapped_column(Float, default=0)
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class MovimientoInv(Base):
+    """Kardex: cantidad con signo (entrada +, salida −). El saldo de una bodega es la suma de sus movimientos."""
+    __tablename__ = "movimientos_inv"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    material_id: Mapped[str] = mapped_column(ForeignKey("materiales.id"), index=True)
+    obra_id: Mapped[str] = mapped_column(ForeignKey("obras.id"), index=True)
+    fecha: Mapped[date] = mapped_column(Date, index=True)
+    tipo: Mapped[str] = mapped_column(String(12))  # entrada | salida | ajuste | traslado
+    cantidad: Mapped[float] = mapped_column(Float)
+    costo_unitario: Mapped[float] = mapped_column(Float, default=0)
+    actividad_id: Mapped[str] = mapped_column(String(36), default="")  # consumo por actividad (salidas)
+    referencia: Mapped[str] = mapped_column(String(120), default="")
+    detalle: Mapped[str] = mapped_column(String(300), default="")
+    traslado_id: Mapped[str] = mapped_column(String(36), default="")
+    registrado_por: Mapped[str] = mapped_column(String(200), default="")
+    creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+# ---------------- Compras y proveedores ----------------
+class Proveedor(Base):
+    __tablename__ = "proveedores"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    nombre: Mapped[str] = mapped_column(String(200))
+    nit: Mapped[str] = mapped_column(String(40), default="")
+    contacto: Mapped[str] = mapped_column(String(120), default="")
+    telefono: Mapped[str] = mapped_column(String(40), default="")
+    correo: Mapped[str] = mapped_column(String(200), default="")
+    direccion: Mapped[str] = mapped_column(String(200), default="")
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Requisicion(Base):
+    __tablename__ = "requisiciones"
+    __table_args__ = (UniqueConstraint("empresa_id", "numero", name="uq_requisicion_numero"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    obra_id: Mapped[str] = mapped_column(ForeignKey("obras.id"), index=True)
+    numero: Mapped[int] = mapped_column(Integer)
+    fecha: Mapped[date] = mapped_column(Date)
+    solicitante: Mapped[str] = mapped_column(String(200), default="")
+    estado: Mapped[str] = mapped_column(String(20), default="Solicitada")  # Solicitada | Aprobada | Rechazada | Ordenada
+    items: Mapped[list] = mapped_column(JSON, default=list)  # [{material_id, descripcion, unidad, cantidad}]
+    observaciones: Mapped[str] = mapped_column(String(300), default="")
+    resuelto_por: Mapped[str] = mapped_column(String(200), default="")
+    fecha_resolucion: Mapped[date | None] = mapped_column(Date, nullable=True)
+    creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class OrdenCompra(Base):
+    __tablename__ = "ordenes_compra"
+    __table_args__ = (UniqueConstraint("empresa_id", "numero", name="uq_orden_numero"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    obra_id: Mapped[str] = mapped_column(ForeignKey("obras.id"), index=True)
+    proveedor_id: Mapped[str] = mapped_column(ForeignKey("proveedores.id"), index=True)
+    requisicion_id: Mapped[str] = mapped_column(String(36), default="")
+    numero: Mapped[int] = mapped_column(Integer)
+    fecha: Mapped[date] = mapped_column(Date)
+    fecha_entrega: Mapped[date | None] = mapped_column(Date, nullable=True)
+    estado: Mapped[str] = mapped_column(String(20), default="Borrador")  # Borrador | Emitida | Parcial | Recibida | Cancelada
+    items: Mapped[list] = mapped_column(JSON, default=list)  # [{material_id, descripcion, unidad, cantidad, precio_unitario, recibido}]
+    iva_pct: Mapped[float] = mapped_column(Float, default=19)
+    condiciones: Mapped[str] = mapped_column(String(300), default="")
+    observaciones: Mapped[str] = mapped_column(String(300), default="")
+    creado_por: Mapped[str] = mapped_column(String(200), default="")
     creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

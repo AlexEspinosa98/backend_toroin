@@ -14,7 +14,8 @@ router = APIRouter(prefix="/empresa", tags=["empresa"])
 
 
 ALERTAS_CLAVES = {"licencia": "Licencia", "personal": "Habilitación SST del personal", "contrato": "Avance y contrato de obra", "asistencia": "Asistencia sin registrar",
-                  "epp": "Solicitudes de EPP", "pagos": "Tarifas de destajo", "finanzas": "Pérdidas y márgenes"}
+                  "epp": "Solicitudes de EPP", "pagos": "Tarifas de destajo", "finanzas": "Pérdidas y márgenes",
+                  "presupuesto": "Sobrecostos frente al presupuesto", "cronograma": "Actividades atrasadas y ruta crítica", "inventario": "Materiales bajo el mínimo", "compras": "Requisiciones y órdenes de compra"}
 
 
 def _usuario_out(u: Usuario, est=None) -> dict:
