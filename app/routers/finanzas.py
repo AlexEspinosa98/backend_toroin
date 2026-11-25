@@ -7,7 +7,7 @@ from sqlalchemy import select
 from ..audit import registrar
 from ..calculos import costo_por_actividad, resumen_financiero
 from ..deps import Ctx, exigir_modulo
-from ..models import Actividad, Contrato, Factura, Gasto, Obra, RegistroBitacora, Trabajador
+from ..models import Actividad, Asignacion, Contrato, Factura, Gasto, Obra, RegistroBitacora, Trabajador
 from ..reglas import ejecutado_de_items, subitems_por_padre
 from ..schemas import CATEGORIAS_GASTO, FacturaIn, GastoIn, IngresosIn
 from .contrato import obra_de
@@ -33,8 +33,12 @@ def _datos(ctx: Ctx, obra: Obra) -> dict:
         meses.setdefault(x.fecha.strftime("%Y-%m"), {"facturado": 0.0, "gastos": 0.0})["facturado"] += x.valor
     for x in gas:
         meses.setdefault(x.fecha.strftime("%Y-%m"), {"facturado": 0.0, "gastos": 0.0})["gastos"] += x.valor
+    padres = {a.id: a for a in acts if not a.padre_id}
+    rubros = [{"id": a.id, "nombre": (f"{a.nombre} · {a.ubicacion}" if a.ubicacion else a.nombre), "padre_id": a.padre_id,
+               "padre": padres[a.padre_id].nombre if a.padre_id in padres else ""}
+              for a in sorted(acts, key=lambda x: (x.grupo, x.padre_id or x.id, x.padre_id != "", x.nombre))]
     return {"obra": {"id": obra.id, "nombre": obra.nombre, "ciudad": obra.ciudad}, "tiene_contrato": c is not None,
-            "resumen": resumen_financiero(obra, c, acts, regs, fac, gas, date.today()),
+            "resumen": resumen_financiero(obra, c, acts, regs, fac, gas, date.today()), "rubros": rubros,
             "facturas": [_f(x) for x in fac], "gastos": [_f(x) for x in gas],
             "meses": [{"mes": k, **v} for k, v in sorted(meses.items())], "categorias": CATEGORIAS_GASTO}
 
@@ -60,7 +64,10 @@ def rubros(obra_id: str, ctx: Ctx = Depends(exigir_modulo("finanzas"))):
     fac = list(db.scalars(select(Factura).where(Factura.obra_id == obra.id, Factura.empresa_id == e)))
     ids = {t for r in regs for t in (r.trabajadores or [])}
     ts = {t.id: t for t in db.scalars(select(Trabajador).where(Trabajador.empresa_id == e, Trabajador.id.in_(ids)))} if ids else {}
-    mo = {c["actividad_id"]: c["costo"] for c in costo_por_actividad(acts, regs, ts, date(2000, 1, 1), hoy, hoy, cargar_cfg(ctx, hoy.year))}
+    asig: dict[str, list] = {}
+    for x in db.scalars(select(Asignacion).where(Asignacion.empresa_id == e, Asignacion.obra_id == obra.id)):
+        asig.setdefault(x.trabajador_id, []).append(x)
+    mo = {c["actividad_id"]: c["costo"] for c in costo_por_actividad(acts, regs, ts, date(2000, 1, 1), hoy, hoy, cargar_cfg(ctx, hoy.year), asig)}
     ejec = ejecutado_de_items(acts, regs)
     hijos = subitems_por_padre(acts)
     filas = []

@@ -112,7 +112,7 @@ def pagos(desde: date, hasta: date, obra_id: str | None = None, corte: date | No
     acts = {a.id: a for a in acts_l}
     filas = [liquidar(t, desde, hasta, corte, asist.get(t.id, []), asig.get(t.id, []), regs, acts, cfg) for t in ts]
     tmap = {t.id: t for t in ts}
-    costos = costo_por_actividad(acts_l, regs, tmap, desde, hasta, corte, cfg)
+    costos = costo_por_actividad(acts_l, regs, tmap, desde, hasta, corte, cfg, asig)
     tot = {k: sum(f[k] for f in filas) for k in ("devengado", "auxilio", "salud", "pension", "neto")}
     return {"config": _cfg_json(cfg), "filas": filas, "totales": tot, "costos": costos, "sin_tarifa": sum(f["sin_tarifa"] for f in filas)}
 

@@ -185,9 +185,14 @@ def valor_unitario_efectivo(a, padre=None) -> float:
     return (getattr(a, "equivale", 0.0) or 0.0) * padre.valor_unitario / a.cantidad
 
 
-def costo_por_actividad(actividades, registros, trabajadores: dict, desde: date, hasta: date, corte: date, cfg: Cfg) -> list[dict]:
-    """Costo de mano de obra e ingreso de cada actividad con avance. Los subítems se reportan aparte de su ítem."""
+def costo_por_actividad(actividades, registros, trabajadores: dict, desde: date, hasta: date, corte: date, cfg: Cfg,
+                        asignaciones: dict | None = None) -> list[dict]:
+    """Costo de mano de obra e ingreso de cada actividad con avance. Los subítems se reportan aparte de su ítem.
+
+    Cada persona cuesta según cómo se le pague en esa obra: por jornal, el día; por ejecutado, su parte × la tarifa.
+    """
     padres = {a.id: a for a in actividades if not getattr(a, "padre_id", "")}
+    asig = asignaciones or {}
     out = []
     for a in actividades:
         regs = [r for r in registros if r.actividad_id == a.id and desde <= r.fecha <= hasta and r.fecha <= corte]
@@ -195,15 +200,22 @@ def costo_por_actividad(actividades, registros, trabajadores: dict, desde: date,
         if cantidad <= 0:
             continue
         dias_persona = sum(len(r.trabajadores) if r.trabajadores else r.personas for r in regs)
-        if cfg.modalidad_pago == "destajo":
-            base = cantidad * (a.tarifa or 0)
-        else:
-            base = 0.0
-            for r in regs:
-                if r.trabajadores:
-                    base += sum((trabajadores[i].jornal if i in trabajadores and trabajadores[i].jornal is not None else cfg.jornal_base) for i in r.trabajadores)
+        base = 0.0
+        for r in regs:
+            ids = r.trabajadores or []
+            if not ids:
+                # Sin nombres: se asume la forma de pago de la empresa
+                base += r.cantidad * (a.tarifa or 0) if cfg.modalidad_pago == "destajo" else r.personas * cfg.jornal_base
+                continue
+            for i in ids:
+                propias = asig.get(i, [])
+                if modalidad_en(propias, r.obra_id, r.fecha, cfg) == "destajo":
+                    parte = (r.por_trabajador or {}).get(i, r.cantidad / len(ids))
+                    base += parte * (a.tarifa or 0)
+                elif i in trabajadores:
+                    base += jornal_en(trabajadores[i], propias, r.obra_id, r.fecha, cfg)
                 else:
-                    base += r.personas * cfg.jornal_base
+                    base += cfg.jornal_base
         costo = base * cfg.factor_prestacional
         padre = padres.get(getattr(a, "padre_id", "") or "")
         vu = valor_unitario_efectivo(a, padre)

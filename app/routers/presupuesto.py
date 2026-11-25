@@ -8,7 +8,7 @@ from ..audit import registrar
 from ..calculos import costo_por_actividad
 from ..calculos_extra import CATEGORIAS_PRES, presupuesto_vs_real
 from ..deps import Ctx, exigir_modulo
-from ..models import Actividad, Contrato, Gasto, Obra, PresupuestoItem, RegistroBitacora, Trabajador
+from ..models import Actividad, Asignacion, Contrato, Gasto, Obra, PresupuestoItem, RegistroBitacora, Trabajador
 from ..reglas import resumen_obra
 from ..schemas import PresupuestoIn
 from .contrato import obra_de
@@ -29,7 +29,10 @@ def datos_presupuesto(ctx: Ctx, obra: Obra, hoy: date | None = None) -> dict:
     ids = {t for r in regs for t in (r.trabajadores or [])}
     ts = {t.id: t for t in db.scalars(select(Trabajador).where(Trabajador.empresa_id == e, Trabajador.id.in_(ids)))} if ids else {}
     cfg = cargar_cfg(ctx, hoy.year)
-    costos = costo_por_actividad(acts, regs, ts, date(2000, 1, 1), hoy, hoy, cfg)
+    asig: dict[str, list] = {}
+    for x in db.scalars(select(Asignacion).where(Asignacion.empresa_id == e, Asignacion.obra_id == obra.id)):
+        asig.setdefault(x.trabajador_id, []).append(x)
+    costos = costo_por_actividad(acts, regs, ts, date(2000, 1, 1), hoy, hoy, cfg, asig)
     mo = {c["actividad_id"]: c["costo"] for c in costos}
     avance = resumen_obra(contrato, acts, regs, hoy)["avance_fisico"]
     r = presupuesto_vs_real(items, gastos, mo, avance)
