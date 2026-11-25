@@ -93,11 +93,53 @@ def calcular_periodo(desde: date, fin_periodo: date, asistencias, asignaciones, 
             "ausencias_injustificadas": aus_i, "total": total, "semanas": semanas}
 
 
+def asignacion_en(asignaciones, obra_id: str, f: date):
+    """La asignación de esa obra vigente ese día."""
+    for a in asignaciones:
+        if a.obra_id == obra_id and a.fecha_ingreso <= f and (not a.fecha_retiro or f <= a.fecha_retiro):
+            return a
+    return None
+
+
+def modalidad_en(asignaciones, obra_id: str, f: date, cfg: Cfg) -> str:
+    """Cómo se le paga en esa obra ese día: lo pactado al asignarlo o, si no se fijó, lo de la empresa."""
+    a = asignacion_en(asignaciones, obra_id, f)
+    return (getattr(a, "modalidad", "") if a else "") or cfg.modalidad_pago
+
+
+def jornal_en(t, asignaciones, obra_id: str, f: date, cfg: Cfg) -> float:
+    """Jornal del día: el pactado en esa obra, si no el del trabajador y si no el de la empresa."""
+    a = asignacion_en(asignaciones, obra_id, f)
+    if a is not None and getattr(a, "jornal", None) is not None:
+        return a.jornal
+    return t.jornal if t.jornal is not None else cfg.jornal_base
+
+
 def liquidar(t, desde: date, hasta: date, corte: date, asistencias, asignaciones, registros, actividades: dict, cfg: Cfg) -> dict:
-    """t: Trabajador; registros: RegistroBitacora del periodo; actividades: id → Actividad (con .tarifa y .obra_id)."""
+    """t: Trabajador; registros: RegistroBitacora del periodo; actividades: id → Actividad (con .tarifa y .obra_id).
+
+    La forma de pago se toma de la asignación a cada obra: los días en obras por jornal se pagan por día y lo
+    ejecutado en obras por destajo, por cantidad. Un mismo periodo puede mezclar las dos.
+    """
     dias = calcular_periodo(desde, hasta, asistencias, asignaciones, cfg, corte)
     dias_descanso = dias["domingos"] + (dias["festivos"] if cfg.regla_dominical == "legal" else 0)
     jornal = t.jornal if t.jornal is not None else cfg.jornal_base
+    tope = min(hasta, corte)
+
+    # Día a día: dónde asistió y cómo se le paga allí
+    presencia: dict[date, list] = {}
+    for a in asistencias:
+        if a.asistio and desde <= a.fecha <= tope:
+            presencia.setdefault(a.fecha, []).append(a)
+    dias_jornal = dias_destajo = 0
+    basico_jornal = 0.0
+    for f, marcas in sorted(presencia.items()):
+        obra_id = next((m.obra_id for m in marcas if modalidad_en(asignaciones, m.obra_id, f, cfg) == "jornal"), marcas[0].obra_id)
+        if modalidad_en(asignaciones, obra_id, f, cfg) == "jornal":
+            dias_jornal += 1
+            basico_jornal += jornal_en(t, asignaciones, obra_id, f, cfg)
+        else:
+            dias_destajo += 1
 
     detalle, sin_tarifa = [], 0
     for r in registros:
@@ -107,35 +149,45 @@ def liquidar(t, desde: date, hasta: date, corte: date, asistencias, asignaciones
         if not a:
             continue
         tarifa = a.tarifa or 0
-        if not tarifa:
+        pagado = modalidad_en(asignaciones, r.obra_id, r.fecha, cfg) == "destajo"
+        if pagado and not tarifa:
             sin_tarifa += 1
         medido = t.id in (r.por_trabajador or {})
         parte = r.por_trabajador[t.id] if medido else r.cantidad / (len(r.trabajadores) or 1)
         detalle.append({"fecha": r.fecha, "obra_id": r.obra_id, "actividad": a.nombre, "ubicacion": a.ubicacion, "um": a.um, "cantidad_total": r.cantidad,
-                        "integrantes": len(r.trabajadores), "parte": parte, "medido": medido, "tarifa": tarifa, "valor": parte * tarifa})
+                        "integrantes": len(r.trabajadores), "parte": parte, "medido": medido, "tarifa": tarifa, "valor": parte * tarifa, "pagado": pagado})
     detalle.sort(key=lambda x: x["fecha"])
 
-    ajuste_minimo = 0.0
-    if cfg.modalidad_pago == "jornal":
-        basico = dias["dias_asistidos"] * jornal
-        promedio = jornal
-        descansos = dias_descanso * jornal
-    else:
-        basico = sum(d["valor"] for d in detalle)
-        promedio = basico / dias["dias_asistidos"] if dias["dias_asistidos"] else 0
-        descansos = dias_descanso * promedio
-        ajuste_minimo = max(0.0, (dias["dias_asistidos"] + dias_descanso) * cfg.jornal_minimo - (basico + descansos))
+    basico = basico_jornal + sum(d["valor"] for d in detalle if d["pagado"])
+    promedio = basico / dias["dias_asistidos"] if dias["dias_asistidos"] else jornal
+    descansos = dias_descanso * promedio
+    hay_destajo = dias_destajo > 0 or any(d["pagado"] for d in detalle)
+    # Con pago por ejecutado se garantiza el mínimo proporcional (art. 132 CST)
+    ajuste_minimo = max(0.0, (dias["dias_asistidos"] + dias_descanso) * cfg.jornal_minimo - (basico + descansos)) if hay_destajo else 0.0
     devengado = basico + descansos + ajuste_minimo
     mensual_eq = max(promedio, cfg.jornal_minimo) * 30
     auxilio = (dias["dias_asistidos"] + dias_descanso) * (cfg.aux_transporte / 30) if mensual_eq <= 2 * cfg.smmlv else 0.0
     salud, pension = devengado * PCT_SALUD, devengado * PCT_PENSION
-    return {"trabajador_id": t.id, "nombre": t.nombre, "cedula": t.cedula, "cargo": t.cargo, "modalidad": cfg.modalidad_pago, "jornal": jornal,
+    modalidad = "mixta" if dias_jornal and hay_destajo else "destajo" if hay_destajo else "jornal"
+    return {"trabajador_id": t.id, "nombre": t.nombre, "cedula": t.cedula, "cargo": t.cargo, "modalidad": modalidad, "jornal": jornal,
+            "dias_jornal": dias_jornal, "dias_destajo": dias_destajo, "basico_jornal": basico_jornal,
             "dias": dias, "detalle": detalle, "sin_tarifa": sin_tarifa, "basico": basico, "descansos": descansos, "dias_descanso": dias_descanso,
             "promedio_diario": promedio, "ajuste_minimo": ajuste_minimo, "devengado": devengado, "auxilio": auxilio, "salud": salud, "pension": pension,
             "neto": devengado + auxilio - salud - pension}
 
 
+def valor_unitario_efectivo(a, padre=None) -> float:
+    """Lo que el cliente paga por cada unidad de esta actividad. En un subítem se deriva de lo que representa del ítem."""
+    if padre is None:
+        return a.valor_unitario
+    if not getattr(a, "aporta_avance", True) or not a.cantidad:
+        return 0.0
+    return (getattr(a, "equivale", 0.0) or 0.0) * padre.valor_unitario / a.cantidad
+
+
 def costo_por_actividad(actividades, registros, trabajadores: dict, desde: date, hasta: date, corte: date, cfg: Cfg) -> list[dict]:
+    """Costo de mano de obra e ingreso de cada actividad con avance. Los subítems se reportan aparte de su ítem."""
+    padres = {a.id: a for a in actividades if not getattr(a, "padre_id", "")}
     out = []
     for a in actividades:
         regs = [r for r in registros if r.actividad_id == a.id and desde <= r.fecha <= hasta and r.fecha <= corte]
@@ -153,9 +205,12 @@ def costo_por_actividad(actividades, registros, trabajadores: dict, desde: date,
                 else:
                     base += r.personas * cfg.jornal_base
         costo = base * cfg.factor_prestacional
-        ingreso = cantidad * a.valor_unitario
+        padre = padres.get(getattr(a, "padre_id", "") or "")
+        vu = valor_unitario_efectivo(a, padre)
+        ingreso = cantidad * vu
         out.append({"actividad_id": a.id, "nombre": a.nombre, "ubicacion": a.ubicacion, "um": a.um, "cantidad": cantidad, "ingreso": ingreso, "costo": costo,
-                    "dias_persona": dias_persona, "margen": ingreso - costo, "costo_unitario": costo / cantidad, "valor_unitario": a.valor_unitario, "tarifa": a.tarifa})
+                    "dias_persona": dias_persona, "margen": ingreso - costo, "costo_unitario": costo / cantidad, "valor_unitario": vu, "tarifa": a.tarifa,
+                    "padre_id": getattr(a, "padre_id", "") or "", "padre": padre.nombre if padre else ""})
     return out
 
 

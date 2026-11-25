@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 
 from ..audit import registrar
-from ..calculos import AUX_DEF, SMMLV_DEF, Cfg, calcular_periodo, costo_por_actividad, liquidar
+from ..calculos import AUX_DEF, SMMLV_DEF, Cfg, calcular_periodo, costo_por_actividad, liquidar, valor_unitario_efectivo
 from ..deps import Ctx, contexto, exigir_modulo
 from ..festivos import festivos_colombia
 from ..models import Actividad, Asignacion, Asistencia, ConfigEmpresa, Obra, ParametroLegal, RegistroBitacora, Trabajador
@@ -132,5 +132,16 @@ def fijar_tarifa(aid: str, datos: TarifaIn, request: Request, ctx: Ctx = Depends
 def tarifas(obra_id: str, ctx: Ctx = Depends(contexto)):
     acceso(ctx, "pagos")
     obra_de(ctx, obra_id)
-    acts = ctx.db.scalars(select(Actividad).where(Actividad.empresa_id == ctx.empresa_id, Actividad.obra_id == obra_id).order_by(Actividad.grupo, Actividad.nombre))
-    return [{"id": a.id, "nombre": a.nombre, "ubicacion": a.ubicacion, "um": a.um, "valor_unitario": a.valor_unitario, "tarifa": a.tarifa} for a in acts]
+    acts = list(ctx.db.scalars(select(Actividad).where(Actividad.empresa_id == ctx.empresa_id, Actividad.obra_id == obra_id)
+                               .order_by(Actividad.grupo, Actividad.padre_id, Actividad.nombre)))
+    padres = {a.id: a for a in acts if not a.padre_id}
+    con_sub = {a.padre_id for a in acts if a.padre_id and a.aporta_avance}
+    out = []
+    for a in acts:
+        padre = padres.get(a.padre_id)
+        out.append({"id": a.id, "nombre": a.nombre, "ubicacion": a.ubicacion, "um": a.um, "valor_unitario": valor_unitario_efectivo(a, padre),
+                    "tarifa": a.tarifa, "padre_id": a.padre_id, "padre": padre.nombre if padre else "",
+                    "equivale": a.equivale, "um_item": padre.um if padre else "", "aporta_avance": a.aporta_avance,
+                    # un ítem medido por subítems no se paga directo: la tarifa va en cada subítem
+                    "se_paga": a.id not in con_sub})
+    return out

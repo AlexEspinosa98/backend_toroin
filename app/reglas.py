@@ -51,13 +51,42 @@ def ejecutado_por_actividad(registros) -> dict[str, float]:
     return m
 
 
+def subitems_por_padre(actividades) -> dict[str, list]:
+    """Subítems agrupados por el ítem del contrato al que pertenecen."""
+    m: dict[str, list] = {}
+    for a in actividades:
+        if getattr(a, "padre_id", ""):
+            m.setdefault(a.padre_id, []).append(a)
+    return m
+
+
+def aporte_al_padre(sub, ejecutado: float) -> float:
+    """Cuánto de la unidad del ítem del contrato representa lo ejecutado en un subítem."""
+    if not getattr(sub, "aporta_avance", True) or not sub.cantidad:
+        return 0.0
+    return (ejecutado / sub.cantidad) * (getattr(sub, "equivale", 0.0) or 0.0)
+
+
+def ejecutado_de_items(actividades, registros) -> dict[str, float]:
+    """Ejecutado de cada ítem del contrato, en su propia unidad: lo registrado directo más lo que aportan sus subítems."""
+    bruto = ejecutado_por_actividad(registros)
+    hijos = subitems_por_padre(actividades)
+    out: dict[str, float] = {}
+    for a in actividades:
+        if getattr(a, "padre_id", ""):
+            continue
+        out[a.id] = bruto.get(a.id, 0.0) + sum(aporte_al_padre(h, bruto.get(h.id, 0.0)) for h in hijos.get(a.id, []))
+    return out
+
+
 def resumen_obra(contrato, actividades, registros, fecha: date) -> dict:
-    """Avance físico (valorizado), avance en tiempo, índice y semáforo."""
+    """Avance físico (valorizado), avance en tiempo, índice y semáforo. Los subítems suman a su ítem, no aparte."""
     if not contrato:
         return {"semaforo": "sin-contrato", "valor_contrato": 0, "valor_ejecutado": 0, "avance_fisico": 0, "avance_tiempo": 0, "dias_restantes": 0, "indice": 0}
-    ejec = ejecutado_por_actividad(registros)
-    valor_contrato = sum(a.valor_total for a in actividades)
-    valor_ejec = sum(min(ejec.get(a.id, 0.0), a.cantidad) * a.valor_unitario for a in actividades)
+    items = [a for a in actividades if not getattr(a, "padre_id", "")]
+    ejec = ejecutado_de_items(actividades, registros)
+    valor_contrato = sum(a.valor_total for a in items)
+    valor_ejec = sum(min(ejec.get(a.id, 0.0), a.cantidad) * a.valor_unitario for a in items)
     plazo = max(1, (contrato.fecha_fin - contrato.fecha_inicio).days)
     transcurrido = min(max(0, (fecha - contrato.fecha_inicio).days), plazo)
     fisico = valor_ejec / valor_contrato if valor_contrato else 0

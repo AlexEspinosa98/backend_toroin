@@ -198,10 +198,31 @@ class TrabajadorIn(BaseModel):
     notas: list[str] = []
 
 
+MODALIDADES = ("jornal", "destajo")
+
+
 class AsignacionIn(BaseModel):
     trabajador_id: str
     obra_id: str
     fecha_ingreso: date
+    modalidad: str = ""  # vacío = la forma de pago de la empresa
+    jornal: float | None = Field(default=None, ge=0)
+
+    @field_validator("modalidad")
+    @classmethod
+    def _modalidad(cls, v: str) -> str:
+        v = (v or "").strip().lower()
+        if v and v not in MODALIDADES:
+            raise ValueError("Forma de pago no válida")
+        return v
+
+
+class PagoAsignacionIn(BaseModel):
+    """Cambiar cómo se le paga a alguien en una obra, sin tocar las fechas."""
+    modalidad: str = ""
+    jornal: float | None = Field(default=None, ge=0)
+
+    _v = field_validator("modalidad")(AsignacionIn._modalidad.__func__)
 
 
 class RetiroIn(BaseModel):
@@ -233,6 +254,18 @@ class ActividadIn(BaseModel):
     valor_unitario: float = Field(default=0, ge=0)
     tarifa: float | None = Field(default=None, ge=0)
     advertencias: list[str] = []
+
+
+class SubitemIn(BaseModel):
+    """Porción de un ítem del contrato, en las unidades con que la empresa le paga al trabajador."""
+    id: str | None = None
+    nombre: str = Field(min_length=1, max_length=300)
+    ubicacion: str = Field(default="", max_length=60)
+    um: str = Field(default="UND", max_length=12)
+    cantidad: float = Field(gt=0)            # cuánto hay de este subítem, en su propia unidad
+    equivale: float = Field(default=0, ge=0)  # cuánto del ítem del contrato representa, en la unidad del ítem
+    aporta_avance: bool = True                # False: solo carga costo al rubro (acarreo, andamio…)
+    tarifa: float | None = Field(default=None, ge=0)
 
 
 class PagoProgramadoIn(BaseModel):
@@ -339,6 +372,7 @@ class FacturaIn(BaseModel):
     fecha: date
     concepto: str = Field(default="", max_length=200)
     valor: float = Field(gt=0)
+    actividad_id: str = ""  # ítem del contrato al que se imputa
 
 
 class GastoIn(BaseModel):
@@ -346,6 +380,7 @@ class GastoIn(BaseModel):
     categoria: str = "Otros"
     descripcion: str = Field(default="", max_length=200)
     valor: float = Field(gt=0)
+    actividad_id: str = ""  # ítem del contrato al que se imputa
 
 
 class IngresosIn(BaseModel):

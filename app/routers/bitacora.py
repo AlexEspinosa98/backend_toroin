@@ -96,6 +96,11 @@ def guardar_registro(datos: RegistroBitacoraIn, request: Request, ctx: Ctx = Dep
     act = ctx.db.get(Actividad, datos.actividad_id)
     if not act or act.empresa_id != ctx.empresa_id or act.obra_id != datos.obra_id:
         raise HTTPException(404, "Actividad no encontrada")
+    if act.padre_id == "":
+        hijos = list(ctx.db.scalars(select(Actividad).where(Actividad.padre_id == act.id, Actividad.empresa_id == ctx.empresa_id,
+                                                            Actividad.aporta_avance.is_(True))))
+        if hijos:
+            raise HTTPException(422, f"«{act.nombre}» se mide por subítems: registre el avance en {', '.join(h.nombre for h in hijos[:3])}")
     if datos.horas_atraso > 0 and datos.motivo_atraso not in MOTIVOS_ATRASO:
         raise HTTPException(422, "Indique el motivo del atraso")
     if datos.horas_atraso > 0 and not datos.acciones.strip():
@@ -104,7 +109,8 @@ def guardar_registro(datos: RegistroBitacoraIn, request: Request, ctx: Ctx = Dep
                                                           RegistroBitacora.fecha != datos.fecha))
     saldo = act.cantidad - sum(r.cantidad for r in otros)
     if datos.cantidad > saldo + 1e-9:
-        raise HTTPException(422, f"El avance ({datos.cantidad:g} {act.um}) supera el saldo del contrato ({max(saldo, 0):g} {act.um})")
+        falta = "lo que falta del subítem" if act.padre_id else "el saldo del contrato"
+        raise HTTPException(422, f"El avance ({datos.cantidad:g} {act.um}) supera {falta} ({max(saldo, 0):g} {act.um})")
     if datos.trabajadores:
         validos = {a.trabajador_id for a in asignados_en(ctx.db, ctx.empresa_id, datos.obra_id, datos.fecha)}
         if not set(datos.trabajadores) <= validos:

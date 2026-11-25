@@ -8,7 +8,7 @@ from ..audit import registrar
 from ..deps import Ctx, exigir_modulo
 from ..models import Asignacion, Asistencia, Obra, Trabajador
 from ..reglas import MOTIVOS_INASISTENCIA, habilitacion
-from ..schemas import AsignacionIn, AsistenciaIn, RetiroIn
+from ..schemas import AsignacionIn, AsistenciaIn, PagoAsignacionIn, RetiroIn
 
 router = APIRouter(tags=["asistencia"])
 ROLES_ESCRIBE_ASISTENCIA = ("admin", "gerencia", "sst", "residente")
@@ -23,7 +23,8 @@ def _de_empresa(ctx: Ctx, modelo, id_: str):
 
 
 def _asig(a: Asignacion) -> dict:
-    return {"id": a.id, "trabajador_id": a.trabajador_id, "obra_id": a.obra_id, "fecha_ingreso": a.fecha_ingreso, "fecha_retiro": a.fecha_retiro}
+    return {"id": a.id, "trabajador_id": a.trabajador_id, "obra_id": a.obra_id, "fecha_ingreso": a.fecha_ingreso, "fecha_retiro": a.fecha_retiro,
+            "modalidad": a.modalidad, "jornal": a.jornal}
 
 
 def asignados_en(db, empresa_id: str, obra_id: str, fecha: date) -> list[Asignacion]:
@@ -58,6 +59,21 @@ def asignar(datos: AsignacionIn, request: Request, ctx: Ctx = Depends(exigir_mod
     ctx.db.add(a)
     ctx.db.flush()
     registrar(ctx.db, accion="asignacion.crear", usuario=ctx.usuario, empresa_id=ctx.empresa_id, entidad="asignacion", entidad_id=a.id, request=request)
+    ctx.db.commit()
+    return _asig(a)
+
+
+@router.patch("/asignaciones/{id_}/pago")
+def cambiar_pago(id_: str, datos: PagoAsignacionIn, request: Request, ctx: Ctx = Depends(exigir_modulo("personal", *ROLES_ASIGNA))):
+    """Cómo se le paga en esta obra: por jornal, por ejecutado, o lo que tenga la empresa."""
+    a = _de_empresa(ctx, Asignacion, id_)
+    # Solo se cambia lo que venga en la petición: mandar la modalidad sola no borra el jornal pactado
+    if "modalidad" in datos.model_fields_set:
+        a.modalidad = datos.modalidad
+    if "jornal" in datos.model_fields_set:
+        a.jornal = datos.jornal
+    registrar(ctx.db, accion="asignacion.pago", usuario=ctx.usuario, empresa_id=ctx.empresa_id, entidad="asignacion", entidad_id=a.id,
+              detalle={"modalidad": a.modalidad or "empresa", "jornal": a.jornal}, request=request)
     ctx.db.commit()
     return _asig(a)
 

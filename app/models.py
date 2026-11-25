@@ -189,6 +189,8 @@ class Asignacion(Base):
     obra_id: Mapped[str] = mapped_column(ForeignKey("obras.id"), index=True)
     fecha_ingreso: Mapped[date] = mapped_column(Date)
     fecha_retiro: Mapped[date | None] = mapped_column(Date, nullable=True)
+    modalidad: Mapped[str] = mapped_column(String(10), default="")  # "" = la de la empresa | jornal | destajo
+    jornal: Mapped[float | None] = mapped_column(Float, nullable=True)  # jornal propio en esta obra (si no, el del trabajador)
     creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
@@ -258,6 +260,12 @@ class Actividad(Base):
     valor_unitario: Mapped[float] = mapped_column(Float, default=0)
     valor_total: Mapped[float] = mapped_column(Float, default=0)
     tarifa: Mapped[float | None] = mapped_column(Float, nullable=True)  # destajo por unidad que se paga a la cuadrilla
+    # Subítems: porción del ítem del contrato medida en las unidades con que la empresa le paga al trabajador.
+    # padre_id vacío = ítem del contrato. equivale = cuánto del padre representa, en la unidad del padre
+    # (ej. «Apartamento 101» = 1 APTO = 76 M2 del ítem). aporta_avance=False: solo carga costo al rubro (acarreo, andamio).
+    padre_id: Mapped[str] = mapped_column(String(36), default="", index=True)
+    equivale: Mapped[float] = mapped_column(Float, default=0)
+    aporta_avance: Mapped[bool] = mapped_column(Boolean, default=True)
     advertencias: Mapped[list] = mapped_column(JSON, default=list)
 
 
@@ -353,6 +361,7 @@ class Factura(Base):
     fecha: Mapped[date] = mapped_column(Date)
     concepto: Mapped[str] = mapped_column(String(200), default="")
     valor: Mapped[float] = mapped_column(Float)
+    actividad_id: Mapped[str] = mapped_column(String(36), default="", index=True)  # ítem del contrato al que se imputa
     creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
@@ -367,6 +376,7 @@ class Gasto(Base):
     descripcion: Mapped[str] = mapped_column(String(200), default="")
     valor: Mapped[float] = mapped_column(Float)
     origen: Mapped[str] = mapped_column(String(60), default="")  # "oc:<id>" si lo generó una compra recibida
+    actividad_id: Mapped[str] = mapped_column(String(36), default="", index=True)  # ítem del contrato al que se imputa
     creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
