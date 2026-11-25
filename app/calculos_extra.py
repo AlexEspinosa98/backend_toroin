@@ -11,7 +11,10 @@ MAPA_GASTOS = {"Compra de insumos": "Materiales e insumos", "Herramientas y equi
 
 
 # ---------------- Presupuesto vs. real ----------------
-def presupuesto_vs_real(items, gastos, costo_mo_por_actividad: dict[str, float], avance_fisico: float) -> dict:
+def presupuesto_vs_real(items, gastos, costo_mo_por_actividad: dict[str, float], avance_fisico: float,
+                        costo_mo_familia: dict[str, float] | None = None) -> dict:
+    """costo_mo_familia: costo de cada actividad con el de sus subítems incluido; solo se usa para comparar
+    renglón por renglón (el total de la categoría sale de costo_mo_por_actividad, para no contar dos veces)."""
     presup = defaultdict(float)
     for it in items:
         presup[it.categoria] += it.valor
@@ -23,10 +26,11 @@ def presupuesto_vs_real(items, gastos, costo_mo_por_actividad: dict[str, float],
     for c in CATEGORIAS_PRES:
         p, r = presup.get(c, 0.0), real.get(c, 0.0)
         categorias.append({"categoria": c, "presupuestado": p, "real": r, "desviacion": r - p, "consumido": (r / p) if p else None})
+    familia = costo_mo_familia if costo_mo_familia is not None else costo_mo_por_actividad
     por_actividad = []
     for it in items:
         if it.categoria == "Mano de obra" and it.actividad_id:
-            r = costo_mo_por_actividad.get(it.actividad_id, 0.0)
+            r = familia.get(it.actividad_id, 0.0)
             por_actividad.append({"actividad_id": it.actividad_id, "presupuestado": it.valor, "real": r, "desviacion": r - it.valor, "consumido": (r / it.valor) if it.valor else None})
     total_p, total_r = sum(presup.values()), sum(real.values())
     valor_ganado = total_p * avance_fisico                       # costo que "debería" llevar según el avance

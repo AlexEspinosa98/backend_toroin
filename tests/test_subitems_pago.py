@@ -135,3 +135,30 @@ def test_gastos_y_facturas_imputados_al_item(client, root):
     # el gasto del subítem cuenta en el rubro del ítem
     assert fila["gastos"] == 200000 and fila["facturado"] == 1_000_000 and fila["contratado"] == 22_500_000
     assert r["sin_imputar"]["gastos"] == 50000
+
+
+def test_presupuesto_suma_la_mano_de_obra_de_los_subitems_al_item(client, root):
+    h, obra, act = _base(client, root)
+    oid = obra["id"]
+    subs = {s["nombre"]: s for s in _subitems(client, h, obra, act, [
+        {"nombre": "Apto 101", "um": "APTO", "cantidad": 1, "equivale": 100, "tarifa": 500000},
+        {"nombre": "Acarreo", "um": "VIAJE", "cantidad": 10, "equivale": 0, "aporta_avance": False, "tarifa": 30000},
+    ]).json()["subitems"]}
+    t = _trabajador(client, h, obra, "Ana", modalidad="destajo")
+    _asistir(client, h, obra, t, range(0, 6))
+    for nombre, cant in (("Apto 101", 1), ("Acarreo", 2)):
+        r = client.put("/bitacora", json={"obra_id": oid, "fecha": str(LUN), "actividad_id": subs[nombre]["id"],
+                                          "cantidad": cant, "trabajadores": [t["id"]]}, headers=h)
+        assert r.status_code == 200, r.text
+    assert client.put(f"/obras/{oid}/presupuesto", json={"items": [
+        {"categoria": "Mano de obra", "concepto": "Cuadrilla", "valor": 1_000_000, "actividad_id": act["id"]}]}, headers=h).status_code == 200
+    d = client.get(f"/obras/{oid}/presupuesto", headers=h).json()
+    # 1 APTO × 500.000 + 2 VIAJE × 30.000: el renglón del ítem padre trae lo pagado en sus subítems
+    fila = d["por_actividad"][0]
+    assert fila["actividad_id"] == act["id"] and fila["real"] == 560000 and fila["desviacion"] == -440000
+    # y la categoría no lo cuenta dos veces
+    mo = {c["categoria"]: c for c in d["categorias"]}["Mano de obra"]
+    assert mo["real"] == 560000
+    # los subítems salen debajo de su padre en el selector
+    acts = {a["nombre"]: a for a in d["actividades"]}
+    assert acts["Apto 101"]["padre"] == "MAMPOSTERÍA" and acts["MAMPOSTERÍA"]["subitems"] == 2
