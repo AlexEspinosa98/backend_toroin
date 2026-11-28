@@ -100,6 +100,43 @@ def rubros(obra_id: str, ctx: Ctx = Depends(exigir_modulo("finanzas"))):
     return {"obra": {"id": obra.id, "nombre": obra.nombre}, "rubros": filas, "sin_imputar": sin_imputar}
 
 
+@router.get("/obras/{obra_id}/actividades/{aid}/costos")
+def costos_del_item(obra_id: str, aid: str, ctx: Ctx = Depends(exigir_modulo("finanzas"))):
+    """Lo que lleva gastado un ítem del contrato: la mano de obra de la bitácora y cada compra o gasto
+    cargado a él o a sus subítems, frente a lo que el cliente paga por lo ejecutado."""
+    obra = obra_de(ctx, obra_id)
+    e, db, hoy = ctx.empresa_id, ctx.db, date.today()
+    item = db.get(Actividad, aid)
+    if not item or item.empresa_id != e or item.obra_id != obra.id:
+        raise HTTPException(404, "Actividad no encontrada")
+    if item.padre_id:
+        raise HTTPException(422, "Los costos se ven en el ítem del contrato, no en un subítem")
+    acts = list(db.scalars(select(Actividad).where(Actividad.obra_id == obra.id, Actividad.empresa_id == e)))
+    hijos = subitems_por_padre(acts).get(item.id, [])
+    familia = {item.id: "", **{h.id: h.nombre for h in hijos}}
+    regs = list(db.scalars(select(RegistroBitacora).where(RegistroBitacora.obra_id == obra.id, RegistroBitacora.empresa_id == e)))
+    ids = {t for r in regs for t in (r.trabajadores or [])}
+    ts = {t.id: t for t in db.scalars(select(Trabajador).where(Trabajador.empresa_id == e, Trabajador.id.in_(ids)))} if ids else {}
+    asig: dict[str, list] = {}
+    for x in db.scalars(select(Asignacion).where(Asignacion.empresa_id == e, Asignacion.obra_id == obra.id)):
+        asig.setdefault(x.trabajador_id, []).append(x)
+    mo = {c["actividad_id"]: c["costo"] for c in costo_por_actividad(acts, regs, ts, date(2000, 1, 1), hoy, hoy, cargar_cfg(ctx, hoy.year), asig)}
+    mano = round(sum(mo.get(i, 0.0) for i in familia), 2)
+    gas = [x for x in db.scalars(select(Gasto).where(Gasto.obra_id == obra.id, Gasto.empresa_id == e).order_by(Gasto.fecha.desc()))
+           if x.actividad_id in familia]
+    total_gastos = round(sum(x.valor for x in gas), 2)
+    hecho = min(ejecutado_de_items(acts, regs).get(item.id, 0.0), item.cantidad)
+    ingreso = round(hecho * item.valor_unitario, 2)
+    costo = round(mano + total_gastos, 2)
+    return {"item": {"id": item.id, "nombre": item.nombre, "ubicacion": item.ubicacion, "um": item.um, "cantidad": item.cantidad,
+                     "valor_unitario": item.valor_unitario, "contratado": item.valor_total, "ejecutado": hecho},
+            "ingreso_ejecutado": ingreso, "mano_obra": mano, "total_gastos": total_gastos,
+            "costo": costo, "margen": round(ingreso - costo, 2),
+            "gastos": [{"id": x.id, "fecha": x.fecha, "categoria": x.categoria, "descripcion": x.descripcion, "valor": x.valor,
+                        "origen": x.origen, "de_compra": x.origen.startswith("oc:"), "subitem": familia[x.actividad_id]} for x in gas],
+            "categorias": CATEGORIAS_GASTO}
+
+
 @router.get("/finanzas")
 def general(ctx: Ctx = Depends(exigir_modulo("finanzas"))):
     obras = ctx.db.scalars(select(Obra).where(Obra.empresa_id == ctx.empresa_id).order_by(Obra.nombre))

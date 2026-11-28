@@ -212,3 +212,36 @@ def test_solo_admin_y_gerencia_manejan_cortes(client, root):
     hr = login(client, "resi@acme.com", u["password_temporal"], "acme")
     assert _corte(client, hr, obra).status_code == 403
     assert client.post("/prestamos", headers=hr, json={"trabajador_id": ana["id"], "fecha": str(LUN), "valor": 1000}).status_code == 403
+
+
+def test_los_costos_de_un_item_suman_los_de_sus_subitems(client, root):
+    h, obra = _base(client, root)
+    oid = obra["id"]
+    item = client.get(f"/obras/{oid}/contrato", headers=h).json()["actividades"][0]
+    client.put(f"/obras/{oid}/actividades/{item['id']}/subitems", headers=h,
+               json=[{"nombre": "Apto 101", "um": "APTO", "cantidad": 1, "equivale": 200}])
+    sub = client.get(f"/obras/{oid}/actividades/{item['id']}/subitems", headers=h).json()["subitems"][0]
+
+    # un gasto al ítem y otro a su subítem
+    client.post(f"/obras/{oid}/gastos", headers=h, json={"fecha": str(LUN), "categoria": "Herramientas y equipos",
+                                                         "descripcion": "Rodillo y brochas", "valor": 185000, "actividad_id": item["id"]})
+    client.post(f"/obras/{oid}/gastos", headers=h, json={"fecha": str(LUN), "categoria": "Compra de insumos",
+                                                         "descripcion": "Pintura apto 101", "valor": 420000, "actividad_id": sub["id"]})
+    # y uno que no es de este ítem
+    client.post(f"/obras/{oid}/gastos", headers=h, json={"fecha": str(LUN), "categoria": "Transporte", "descripcion": "Fletes", "valor": 90000})
+
+    r = client.get(f"/obras/{oid}/actividades/{item['id']}/costos", headers=h)
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["total_gastos"] == 605000 and len(d["gastos"]) == 2
+    por_nombre = {g["descripcion"]: g for g in d["gastos"]}
+    assert por_nombre["Rodillo y brochas"]["subitem"] == "" and por_nombre["Pintura apto 101"]["subitem"] == "Apto 101"
+    assert d["costo"] == d["mano_obra"] + d["total_gastos"]
+    assert d["margen"] == round(d["ingreso_ejecutado"] - d["costo"], 2)
+
+    # el mismo total aparece en el costo por ítem de finanzas
+    fila = [x for x in client.get(f"/obras/{oid}/rubros", headers=h).json()["rubros"] if x["actividad_id"] == item["id"]][0]
+    assert fila["gastos"] == 605000
+
+    # un subítem no tiene su propia hoja de costos
+    assert client.get(f"/obras/{oid}/actividades/{sub['id']}/costos", headers=h).status_code == 422
