@@ -256,6 +256,18 @@ class ActividadIn(BaseModel):
     advertencias: list[str] = []
 
 
+class OtrosiIn(BaseModel):
+    """Otrosí o adición al contrato. `archivo` es el PDF en base64: None lo deja como está, "" lo quita."""
+    numero: str = Field(default="", max_length=60)
+    fecha: date
+    descripcion: str = Field(default="", max_length=2000)
+    valor_adicion: float = 0                      # negativo = reducción
+    fecha_fin_nueva: date | None = None           # prórroga; None = no cambia el plazo
+    actividades: list[ActividadIn] = []
+    archivo_nombre: str = Field(default="", max_length=200)
+    archivo: str | None = None
+
+
 class SubitemIn(BaseModel):
     """Porción de un ítem del contrato, en las unidades con que la empresa le paga al trabajador."""
     id: str | None = None

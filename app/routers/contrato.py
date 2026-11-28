@@ -7,7 +7,7 @@ from sqlalchemy import select
 from .. import catalog
 from ..audit import registrar
 from ..deps import Ctx, contexto, exigir_modulo, modulos_de_usuario
-from ..models import Actividad, Asistencia, Contrato, Obra, RegistroBitacora
+from ..models import Actividad, Asistencia, Contrato, Obra, Otrosi, RegistroBitacora
 from ..reglas import aporte_al_padre, ejecutado_de_items, ejecutado_por_actividad, resumen_obra, subitems_por_padre
 from ..schemas import ContratoIn, SubitemIn
 
@@ -31,12 +31,14 @@ def obra_de(ctx: Ctx, obra_id: str) -> Obra:
     return o
 
 
-def _act(a: Actividad, ejec: float = 0.0, padre: Actividad | None = None, hijos: int = 0, mide_por_subitems: bool = False) -> dict:
+def _act(a: Actividad, ejec: float = 0.0, padre: Actividad | None = None, hijos: int = 0, mide_por_subitems: bool = False,
+         otrosies: dict[str, str] | None = None) -> dict:
     """Una fila de actividad: ítem del contrato (padre_id vacío) o subítem de la empresa."""
     d = {"id": a.id, "item": a.item, "grupo": a.grupo, "capitulo": a.capitulo, "nombre": a.nombre, "ubicacion": a.ubicacion, "um": a.um,
          "cantidad": a.cantidad, "valor_unitario": a.valor_unitario, "valor_total": a.valor_total, "tarifa": a.tarifa,
          "advertencias": a.advertencias, "ejecutado": ejec, "pendiente": max(0.0, a.cantidad - ejec),
          "padre_id": a.padre_id, "equivale": a.equivale, "aporta_avance": a.aporta_avance,
+         "otrosi_id": a.otrosi_id, "otrosi": (otrosies or {}).get(a.otrosi_id, ""),
          "subitems": hijos, "registrable": not mide_por_subitems}
     if padre is not None:
         d["padre"] = padre.nombre
@@ -51,7 +53,7 @@ def actividades_de(ctx: Ctx, obra_id: str) -> list[Actividad]:
                                .order_by(Actividad.grupo, Actividad.padre_id, Actividad.nombre)))
 
 
-def filas_actividades(acts: list[Actividad], regs) -> list[dict]:
+def filas_actividades(acts: list[Actividad], regs, otrosies: dict[str, str] | None = None) -> list[dict]:
     """Ítems del contrato y, enseguida de cada uno, sus subítems."""
     bruto = ejecutado_por_actividad(regs)
     de_item = ejecutado_de_items(acts, regs)
@@ -61,9 +63,29 @@ def filas_actividades(acts: list[Actividad], regs) -> list[dict]:
         if a.padre_id:
             continue
         sub = hijos.get(a.id, [])
-        filas.append(_act(a, de_item.get(a.id, 0.0), hijos=len(sub), mide_por_subitems=any(h.aporta_avance for h in sub)))
-        filas.extend(_act(h, bruto.get(h.id, 0.0), padre=a) for h in sub)
+        filas.append(_act(a, de_item.get(a.id, 0.0), hijos=len(sub), mide_por_subitems=any(h.aporta_avance for h in sub), otrosies=otrosies))
+        filas.extend(_act(h, bruto.get(h.id, 0.0), padre=a, otrosies=otrosies) for h in sub)
     return filas
+
+
+def numeros_de_otrosi(ctx: Ctx, obra_id: str) -> dict[str, str]:
+    """id del otrosí → cómo se le nombra en pantalla («Otrosí 2»)."""
+    return {o.id: f"Otrosí {o.numero}" if o.numero else "Otrosí s/n"
+            for o in ctx.db.scalars(select(Otrosi).where(Otrosi.obra_id == obra_id, Otrosi.empresa_id == ctx.empresa_id))}
+
+
+def recalcular_vigente(ctx: Ctx, obra: Obra) -> Contrato | None:
+    """El valor y el plazo del contrato son siempre los vigentes: los del original más lo que cambien los otrosíes."""
+    c = ctx.db.scalar(select(Contrato).where(Contrato.obra_id == obra.id, Contrato.empresa_id == ctx.empresa_id))
+    if not c:
+        return None
+    otros = list(ctx.db.scalars(select(Otrosi).where(Otrosi.obra_id == obra.id, Otrosi.empresa_id == ctx.empresa_id)))
+    c.fecha_fin_base = c.fecha_fin_base or c.fecha_fin
+    prorrogas = [o for o in otros if o.fecha_fin_nueva]
+    # Manda la prórroga del otrosí más reciente, no la fecha más lejana: un otrosí posterior puede recortar el plazo.
+    c.fecha_fin = max(prorrogas, key=lambda o: (o.fecha, o.creado)).fecha_fin_nueva if prorrogas else c.fecha_fin_base
+    c.valor_total = round(c.valor_base + sum(o.valor_adicion for o in otros), 2)
+    return c
 
 
 def _contrato(c: Contrato) -> dict:
@@ -78,7 +100,7 @@ def datos_obra(ctx: Ctx, obra: Obra, fecha: date | None = None) -> dict:
     return {
         "obra": {"id": obra.id, "nombre": obra.nombre, "ciudad": obra.ciudad, "ingresos_proyectados": obra.ingresos_proyectados},
         "contrato": _contrato(c) if c else None,
-        "actividades": filas_actividades(acts, regs),
+        "actividades": filas_actividades(acts, regs, numeros_de_otrosi(ctx, obra.id)),
         "resumen": resumen_obra(c, acts, regs, fecha or date.today()),
     }
 
@@ -123,7 +145,9 @@ def guardar_contrato(obra_id: str, datos: ContratoIn, request: Request, ctx: Ctx
     cols = datos.model_dump(exclude={"actividades", "ingresos_proyectados", "pagos"})
     pagos = [p.model_dump(mode="json") for p in datos.pagos]
     suma = sum(round(a.cantidad * a.valor_unitario, 2) for a in datos.actividades)
-    cols["valor_total"] = datos.valor_total or suma
+    # Aquí se edita el contrato original. Los otrosíes se suman después, en recalcular_vigente.
+    cols["valor_base"] = cols["valor_total"] = datos.valor_total or suma
+    cols["fecha_fin_base"] = datos.fecha_fin
     if c:
         for k, v in cols.items():
             setattr(c, k, v)
@@ -131,13 +155,19 @@ def guardar_contrato(obra_id: str, datos: ContratoIn, request: Request, ctx: Ctx
     else:
         ctx.db.add(Contrato(empresa_id=ctx.empresa_id, obra_id=obra.id, pagos=pagos, **cols))
 
+    # Solo los ítems del contrato original: los que trajo un otrosí se editan en su propio otrosí.
     existentes = {a.id: a for a in ctx.db.scalars(select(Actividad).where(Actividad.obra_id == obra.id, Actividad.empresa_id == ctx.empresa_id,
-                                                                          Actividad.padre_id == ""))}
+                                                                          Actividad.padre_id == "", Actividad.otrosi_id == ""))}
+    de_otrosi = numeros_de_otrosi(ctx, obra.id)
     usados: set[str] = set()
     for a in datos.actividades:
         vals = a.model_dump(exclude={"id"})
         vals["valor_total"] = round(a.cantidad * a.valor_unitario, 2)
         fila = existentes.get(a.id) if a.id else None
+        if a.id and not fila:
+            ajeno = ctx.db.get(Actividad, a.id)
+            if ajeno is not None and ajeno.otrosi_id:
+                raise HTTPException(422, f"«{a.nombre}» vino del {de_otrosi.get(ajeno.otrosi_id, 'otrosí')}: edítelo desde allí")
         if fila:
             for k, v in vals.items():
                 setattr(fila, k, v)
@@ -156,6 +186,8 @@ def guardar_contrato(obra_id: str, datos: ContratoIn, request: Request, ctx: Ctx
             ctx.db.delete(h)
         ctx.db.delete(fila)
     obra.ingresos_proyectados = datos.ingresos_proyectados
+    ctx.db.flush()
+    recalcular_vigente(ctx, obra)
     registrar(ctx.db, accion="contrato.guardar", usuario=ctx.usuario, empresa_id=ctx.empresa_id, entidad="obra", entidad_id=obra.id,
               detalle={"actividades": len(datos.actividades), "valor": cols["valor_total"]}, request=request)
     ctx.db.commit()

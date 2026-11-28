@@ -226,8 +226,11 @@ class Contrato(Base):
     descripcion: Mapped[str] = mapped_column(Text, default="")
     tipo: Mapped[str] = mapped_column(String(80), default="")
     fecha_inicio: Mapped[date] = mapped_column(Date)
+    # fecha_fin y valor_total son siempre los VIGENTES (base + otrosíes). Los del contrato original quedan en *_base.
     fecha_fin: Mapped[date] = mapped_column(Date)
+    fecha_fin_base: Mapped[date | None] = mapped_column(Date, nullable=True)
     valor_total: Mapped[float] = mapped_column(Float, default=0)
+    valor_base: Mapped[float] = mapped_column(Float, default=0)
     valor_antes_aiu: Mapped[float] = mapped_column(Float, default=0)
     aiu: Mapped[float] = mapped_column(Float, default=0)
     pct_administracion: Mapped[float] = mapped_column(Float, default=0)
@@ -264,9 +267,29 @@ class Actividad(Base):
     # padre_id vacío = ítem del contrato. equivale = cuánto del padre representa, en la unidad del padre
     # (ej. «Apartamento 101» = 1 APTO = 76 M2 del ítem). aporta_avance=False: solo carga costo al rubro (acarreo, andamio).
     padre_id: Mapped[str] = mapped_column(String(36), default="", index=True)
+    otrosi_id: Mapped[str] = mapped_column(String(36), default="", index=True)  # vacío = viene del contrato original
     equivale: Mapped[float] = mapped_column(Float, default=0)
     aporta_avance: Mapped[bool] = mapped_column(Boolean, default=True)
     advertencias: Mapped[list] = mapped_column(JSON, default=list)
+
+
+class Otrosi(Base):
+    """Otrosí o adición al contrato de una obra: cambia valor, plazo o alcance, y puede traer ítems nuevos."""
+    __tablename__ = "otrosies"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    obra_id: Mapped[str] = mapped_column(ForeignKey("obras.id"), index=True)
+    numero: Mapped[str] = mapped_column(String(60), default="")
+    fecha: Mapped[date] = mapped_column(Date)
+    descripcion: Mapped[str] = mapped_column(Text, default="")
+    valor_adicion: Mapped[float] = mapped_column(Float, default=0)          # negativo = reducción
+    fecha_fin_nueva: Mapped[date | None] = mapped_column(Date, nullable=True)  # prórroga del plazo
+    archivo_nombre: Mapped[str] = mapped_column(String(200), default="")
+    archivo: Mapped[str] = mapped_column(Text, default="")                  # el PDF en base64
+    archivo_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    creado_por: Mapped[str] = mapped_column(String(200), default="")
 
 
 class RegistroBitacora(Base):
