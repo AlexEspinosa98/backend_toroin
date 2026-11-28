@@ -12,6 +12,8 @@ from ..schemas import AsignacionIn, AsistenciaIn, PagoAsignacionIn, RetiroIn
 
 router = APIRouter(tags=["asistencia"])
 ROLES_ESCRIBE_ASISTENCIA = ("admin", "gerencia", "sst", "residente")
+# El SST pasa lista en la obra, el mismo día. Corregir días anteriores es de la administración.
+ROLES_SOLO_HOY = ("sst",)
 ROLES_ASIGNA = ("admin", "gerencia", "rrhh")
 
 
@@ -115,14 +117,18 @@ def ver_asistencia(obra_id: str, fecha: date, ctx: Ctx = Depends(exigir_modulo("
             "trabajador_id": t.id, "nombre": t.nombre, "cargo": t.cargo, "habilitacion": h.a_dict(), "puede_trabajar": h.puede_trabajar,
             "marca": {"asistio": m.asistio, "motivo": m.motivo, "detalle": m.detalle} if m else None,
         })
-    return {"obra_id": obra_id, "fecha": fecha, "registrada": bool(marcas), "personal": out, "motivos": list(MOTIVOS_INASISTENCIA)}
+    return {"obra_id": obra_id, "fecha": fecha, "registrada": bool(marcas), "personal": out, "motivos": list(MOTIVOS_INASISTENCIA),
+            "solo_hoy": ctx.usuario.rol in ROLES_SOLO_HOY, "hoy": date.today()}
 
 
 @router.put("/asistencia")
 def guardar_asistencia(datos: AsistenciaIn, request: Request, ctx: Ctx = Depends(exigir_modulo("asistencia", *ROLES_ESCRIBE_ASISTENCIA))):
     _de_empresa(ctx, Obra, datos.obra_id)
-    if datos.fecha > date.today():
+    hoy = date.today()
+    if datos.fecha > hoy:
         raise HTTPException(422, "No se puede registrar asistencia de una fecha futura")
+    if ctx.usuario.rol in ROLES_SOLO_HOY and datos.fecha != hoy:
+        raise HTTPException(403, "Solo puede registrar la asistencia de hoy. Pida a administración que corrija los días anteriores.")
     asignados = {a.trabajador_id for a in asignados_en(ctx.db, ctx.empresa_id, datos.obra_id, datos.fecha)}
     trabajadores = {t.id: t for t in ctx.db.scalars(select(Trabajador).where(Trabajador.empresa_id == ctx.empresa_id, Trabajador.id.in_(asignados)))} if asignados else {}
     vistos: set[str] = set()

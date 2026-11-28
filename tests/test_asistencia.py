@@ -64,3 +64,24 @@ def test_aislamiento_y_licencia(client, root):
     # plan sin el módulo asistencia: el plan esencial lo incluye, así que se desactiva a mano
     eid = client.get("/platform/empresas", headers=root).json()[0]["id"]
     client.put(f"/platform/empresas/{eid}/modulos", json={"modulos": {"asistencia": {"activo": False}}}, headers=root)
+
+
+def test_el_sst_solo_marca_la_asistencia_de_hoy(client, root):
+    h, obra, ana, _ = _setup(client, root)
+    u = client.post("/empresa/usuarios", json={"nombre": "Sara SST", "correo": "sst@acme.com", "rol": "sst"}, headers=h).json()
+    hs = login(client, "sst@acme.com", u["password_temporal"], "acme")
+    marcas = [{"trabajador_id": ana["id"], "asistio": True}]
+    ayer = str(HOY - timedelta(days=1))
+
+    # ve la pantalla de cualquier día, pero el front ya sabe que solo puede escribir hoy
+    vista = client.get("/asistencia", params={"obra_id": obra["id"], "fecha": ayer}, headers=hs)
+    assert vista.status_code == 200 and vista.json()["solo_hoy"] is True and vista.json()["hoy"] == str(HOY)
+
+    hoy_ok = client.put("/asistencia", json={"obra_id": obra["id"], "fecha": str(HOY), "marcas": marcas}, headers=hs)
+    assert hoy_ok.status_code == 200, hoy_ok.text
+    atras = client.put("/asistencia", json={"obra_id": obra["id"], "fecha": ayer, "marcas": marcas}, headers=hs)
+    assert atras.status_code == 403 and "hoy" in atras.json()["detail"]
+
+    # la administración sí corrige días anteriores
+    assert client.get("/asistencia", params={"obra_id": obra["id"], "fecha": ayer}, headers=h).json()["solo_hoy"] is False
+    assert client.put("/asistencia", json={"obra_id": obra["id"], "fecha": ayer, "marcas": marcas}, headers=h).status_code == 200
