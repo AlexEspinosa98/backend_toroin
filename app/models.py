@@ -519,3 +519,77 @@ class OrdenCompra(Base):
     observaciones: Mapped[str] = mapped_column(String(300), default="")
     creado_por: Mapped[str] = mapped_column(String(200), default="")
     creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Prestamo(Base):
+    """Préstamo o deuda del trabajador con la empresa. Se abona en los cortes de pago."""
+    __tablename__ = "prestamos"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    trabajador_id: Mapped[str] = mapped_column(ForeignKey("trabajadores.id"), index=True)
+    fecha: Mapped[date] = mapped_column(Date)
+    concepto: Mapped[str] = mapped_column(String(200), default="")
+    valor: Mapped[float] = mapped_column(Float, default=0)      # lo prestado
+    cuota: Mapped[float] = mapped_column(Float, default=0)      # lo que se descuenta por corte; 0 = todo lo que alcance
+    saldo: Mapped[float] = mapped_column(Float, default=0)      # lo que falta por pagar
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)  # False: congelado, no se descuenta
+    notas: Mapped[str] = mapped_column(String(300), default="")
+    creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    creado_por: Mapped[str] = mapped_column(String(200), default="")
+
+
+class Corte(Base):
+    """Corte de pago: la liquidación de un periodo, congelada tal como se pagó."""
+    __tablename__ = "cortes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    obra_id: Mapped[str] = mapped_column(String(36), default="", index=True)  # vacío = todas las obras
+    desde: Mapped[date] = mapped_column(Date)
+    hasta: Mapped[date] = mapped_column(Date)
+    estado: Mapped[str] = mapped_column(String(10), default="abierto")  # abierto | cerrado
+    notas: Mapped[str] = mapped_column(String(300), default="")
+    totales: Mapped[dict] = mapped_column(JSON, default=dict)
+    config: Mapped[dict] = mapped_column(JSON, default=dict)  # con qué reglas se liquidó
+    creado: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    creado_por: Mapped[str] = mapped_column(String(200), default="")
+    cerrado_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cerrado_por: Mapped[str] = mapped_column(String(200), default="")
+
+
+class CorteFila(Base):
+    """Lo que se le paga a una persona en el corte. Es la planilla que firma."""
+    __tablename__ = "corte_filas"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    corte_id: Mapped[str] = mapped_column(ForeignKey("cortes.id"), index=True)
+    trabajador_id: Mapped[str] = mapped_column(String(36), index=True)
+    nombre: Mapped[str] = mapped_column(String(200), default="")
+    cedula: Mapped[str] = mapped_column(String(30), default="")
+    cargo: Mapped[str] = mapped_column(String(80), default="")
+    modalidad: Mapped[str] = mapped_column(String(10), default="jornal")
+    dias_asistidos: Mapped[int] = mapped_column(Integer, default=0)
+    dias_descanso: Mapped[int] = mapped_column(Integer, default=0)
+    devengado: Mapped[float] = mapped_column(Float, default=0)
+    auxilio: Mapped[float] = mapped_column(Float, default=0)
+    salud: Mapped[float] = mapped_column(Float, default=0)
+    pension: Mapped[float] = mapped_column(Float, default=0)
+    prestamo: Mapped[float] = mapped_column(Float, default=0)   # abono a préstamos en este corte
+    otras: Mapped[float] = mapped_column(Float, default=0)      # otros descuentos (herramienta, anticipo…)
+    neto: Mapped[float] = mapped_column(Float, default=0)
+    nota: Mapped[str] = mapped_column(String(200), default="")
+    detalle: Mapped[dict] = mapped_column(JSON, default=dict)   # la liquidación completa, como quedó
+
+
+class AbonoPrestamo(Base):
+    """Abono que un corte cerrado le hizo a un préstamo. Al reabrir el corte se deshace."""
+    __tablename__ = "abonos_prestamo"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_id)
+    empresa_id: Mapped[str] = mapped_column(ForeignKey("empresas.id"), index=True)
+    prestamo_id: Mapped[str] = mapped_column(ForeignKey("prestamos.id"), index=True)
+    corte_id: Mapped[str] = mapped_column(ForeignKey("cortes.id"), index=True)
+    fecha: Mapped[date] = mapped_column(Date)
+    valor: Mapped[float] = mapped_column(Float, default=0)

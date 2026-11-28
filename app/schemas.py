@@ -268,6 +268,52 @@ class OtrosiIn(BaseModel):
     archivo: str | None = None
 
 
+class PrestamoIn(BaseModel):
+    """Préstamo o deuda del trabajador. cuota 0 = descontar todo lo que alcance en cada corte."""
+    trabajador_id: str
+    fecha: date
+    concepto: str = Field(default="", max_length=200)
+    valor: float = Field(gt=0)
+    cuota: float = Field(default=0, ge=0)
+    activo: bool = True
+    notas: str = Field(default="", max_length=300)
+
+
+class PrestamoEditIn(BaseModel):
+    concepto: str = Field(default="", max_length=200)
+    cuota: float = Field(default=0, ge=0)
+    activo: bool = True
+    notas: str = Field(default="", max_length=300)
+
+
+class CorteIn(BaseModel):
+    desde: date
+    hasta: date
+    obra_id: str = ""            # vacío = todas las obras
+    notas: str = Field(default="", max_length=300)
+
+    @field_validator("hasta")
+    @classmethod
+    def _rango(cls, v, info):
+        if info.data.get("desde") and v < info.data["desde"]:
+            raise ValueError("La fecha final no puede ser anterior a la inicial")
+        return v
+
+
+class CorteFilaIn(BaseModel):
+    """Ajuste manual de una fila del corte mientras está abierto."""
+    id: str
+    prestamo: float = Field(default=0, ge=0)
+    otras: float = Field(default=0, ge=0)
+    nota: str = Field(default="", max_length=200)
+
+
+class CorteEditIn(BaseModel):
+    notas: str = Field(default="", max_length=300)
+    filas: list[CorteFilaIn] = []
+    recalcular: bool = False     # vuelve a liquidar con la asistencia de hoy
+
+
 class SubitemIn(BaseModel):
     """Porción de un ítem del contrato, en las unidades con que la empresa le paga al trabajador."""
     id: str | None = None

@@ -3,8 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
 from .errores import registrar_peticion
-from .routers import (alertas, asistencia, auth, bitacora, compras, contrato, cronograma, empresa, epp, finanzas, inventario, negocio, nomina, otrosi,
-                      platform, presupuesto, public)
+from .routers import (alertas, asistencia, auth, bitacora, compras, contrato, cortes, cronograma, empresa, epp, finanzas, inventario, negocio, nomina,
+                      otrosi, platform, presupuesto, public)
 
 settings = get_settings()
 
@@ -35,5 +35,5 @@ def health():
 
 
 for r in (public.router, auth.router, platform.router, empresa.router, negocio.router, asistencia.router, contrato.router, bitacora.router, epp.router, nomina.router, finanzas.router, alertas.router,
-          presupuesto.router, cronograma.router, inventario.router, compras.router, otrosi.router):
+          presupuesto.router, cronograma.router, inventario.router, compras.router, otrosi.router, cortes.router):
     app.include_router(r)

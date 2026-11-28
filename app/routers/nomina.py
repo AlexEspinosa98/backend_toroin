@@ -96,9 +96,8 @@ def control_personal(desde: date, hasta: date, obra_id: str | None = None, corte
     return {"config": _cfg_json(cfg), "filas": filas}
 
 
-@router.get("/pagos")
-def pagos(desde: date, hasta: date, obra_id: str | None = None, corte: date | None = None, ctx: Ctx = Depends(contexto)):
-    acceso(ctx, "pagos")
+def liquidar_periodo(ctx: Ctx, desde: date, hasta: date, obra_id: str | None = None, corte: date | None = None) -> dict:
+    """La prenómina del periodo, tal como se calcula hoy. La usan /pagos y los cortes de pago."""
     cfg = cargar_cfg(ctx, hasta.year)
     corte = corte or date.today()
     ts, asist, asig = _datos_periodo(ctx, desde, hasta, obra_id)
@@ -115,6 +114,12 @@ def pagos(desde: date, hasta: date, obra_id: str | None = None, corte: date | No
     costos = costo_por_actividad(acts_l, regs, tmap, desde, hasta, corte, cfg, asig)
     tot = {k: sum(f[k] for f in filas) for k in ("devengado", "auxilio", "salud", "pension", "neto")}
     return {"config": _cfg_json(cfg), "filas": filas, "totales": tot, "costos": costos, "sin_tarifa": sum(f["sin_tarifa"] for f in filas)}
+
+
+@router.get("/pagos")
+def pagos(desde: date, hasta: date, obra_id: str | None = None, corte: date | None = None, ctx: Ctx = Depends(contexto)):
+    acceso(ctx, "pagos")
+    return liquidar_periodo(ctx, desde, hasta, obra_id, corte)
 
 
 @router.patch("/actividades/{aid}/tarifa")

@@ -21,7 +21,8 @@ def _f(x) -> dict:
     return {c.name: getattr(x, c.name) for c in x.__table__.columns if c.name != "empresa_id"}
 
 
-def _datos(ctx: Ctx, obra: Obra) -> dict:
+def _datos(ctx: Ctx, obra: Obra, desde: date | None = None, hasta: date | None = None) -> dict:
+    """Con desde/hasta se recortan las facturas y los gastos a ese corte; el resumen de la obra sigue siendo el acumulado."""
     e = ctx.empresa_id
     c = ctx.db.scalar(select(Contrato).where(Contrato.obra_id == obra.id, Contrato.empresa_id == e))
     acts = list(ctx.db.scalars(select(Actividad).where(Actividad.obra_id == obra.id, Actividad.empresa_id == e)))
@@ -37,9 +38,18 @@ def _datos(ctx: Ctx, obra: Obra) -> dict:
     rubros = [{"id": a.id, "nombre": (f"{a.nombre} · {a.ubicacion}" if a.ubicacion else a.nombre), "padre_id": a.padre_id,
                "padre": padres[a.padre_id].nombre if a.padre_id in padres else ""}
               for a in sorted(acts, key=lambda x: (x.grupo, x.padre_id or x.id, x.padre_id != "", x.nombre))]
+    resumen = resumen_financiero(obra, c, acts, regs, fac, gas, date.today())
+    en_rango = lambda x: (desde is None or x.fecha >= desde) and (hasta is None or x.fecha <= hasta)  # noqa: E731
+    fac_p = [x for x in fac if en_rango(x)]
+    gas_p = [x for x in gas if en_rango(x)]
+    periodo = None
+    if desde or hasta:
+        facturado, gastos = round(sum(x.valor for x in fac_p), 2), round(sum(x.valor for x in gas_p), 2)
+        periodo = {"desde": desde, "hasta": hasta, "facturado": facturado, "gastos": gastos,
+                   "neto": round(facturado - gastos, 2), "n_facturas": len(fac_p), "n_gastos": len(gas_p)}
     return {"obra": {"id": obra.id, "nombre": obra.nombre, "ciudad": obra.ciudad}, "tiene_contrato": c is not None,
-            "resumen": resumen_financiero(obra, c, acts, regs, fac, gas, date.today()), "rubros": rubros,
-            "facturas": [_f(x) for x in fac], "gastos": [_f(x) for x in gas],
+            "resumen": resumen, "periodo": periodo, "rubros": rubros,
+            "facturas": [_f(x) for x in fac_p], "gastos": [_f(x) for x in gas_p],
             "meses": [{"mes": k, **v} for k, v in sorted(meses.items())], "categorias": CATEGORIAS_GASTO}
 
 
@@ -101,8 +111,10 @@ def general(ctx: Ctx = Depends(exigir_modulo("finanzas"))):
 
 
 @router.get("/obras/{obra_id}/finanzas")
-def de_la_obra(obra_id: str, ctx: Ctx = Depends(exigir_modulo("finanzas"))):
-    return _datos(ctx, obra_de(ctx, obra_id))
+def de_la_obra(obra_id: str, desde: date | None = None, hasta: date | None = None, ctx: Ctx = Depends(exigir_modulo("finanzas"))):
+    if desde and hasta and hasta < desde:
+        raise HTTPException(422, "La fecha final no puede ser anterior a la inicial")
+    return _datos(ctx, obra_de(ctx, obra_id), desde, hasta)
 
 
 @router.put("/obras/{obra_id}/ingresos")
